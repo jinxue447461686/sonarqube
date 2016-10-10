@@ -246,14 +246,7 @@ public class QgateProjectFinderTest {
 
   private ComponentDto insertProjectAuthorizedToAnyone(ComponentDto project) {
     componentDbTester.insertComponent(project);
-    dbClient.roleDao().insertGroupRole(dbSession, new GroupPermissionDto().setGroupId(null).setResourceId(project.getId()).setRole(UserRole.USER));
-    dbSession.commit();
-    return project;
-  }
-
-  private ComponentDto insertProjectAuthorizedToUser(ComponentDto project, UserDto userDto) {
-    componentDbTester.insertComponent(project);
-    dbClient.roleDao().insertGroupRole(dbSession, new GroupPermissionDto().setGroupId(null).setResourceId(project.getId()).setRole(UserRole.USER));
+    dbClient.groupPermissionDao().insert(dbSession, new GroupPermissionDto().setGroupId(null).setResourceId(project.getId()).setRole(UserRole.USER));
     dbSession.commit();
     return project;
   }

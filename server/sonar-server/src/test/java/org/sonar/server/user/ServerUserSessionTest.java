@@ -289,7 +289,7 @@ public class ServerUserSessionTest {
 
   private void addAnonymousPermissions(@Nullable ComponentDto component, String... permissions) {
     for (String permission : permissions) {
-      dbClient.roleDao().insertGroupRole(dbSession, new GroupPermissionDto()
+      dbClient.groupPermissionDao().insert(dbSession, new GroupPermissionDto()
         .setRole(permission)
         .setResourceId(component == null ? null : component.getId()));
     }

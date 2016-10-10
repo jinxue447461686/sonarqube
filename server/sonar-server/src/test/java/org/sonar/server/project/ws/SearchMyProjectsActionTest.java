@@ -329,7 +329,7 @@ public class SearchMyProjectsActionTest {
   }
 
   private void insertGroupPermission(String permission, long groupId, long componentId) {
-    dbClient.roleDao().insertGroupRole(dbSession, new GroupPermissionDto()
+    dbClient.groupPermissionDao().insert(dbSession, new GroupPermissionDto()
       .setRole(permission)
       .setGroupId(groupId)
       .setResourceId(componentId));

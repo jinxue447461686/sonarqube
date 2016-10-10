@@ -224,7 +224,7 @@ public class ProjectsActionTest {
 
   private void addBrowsePermissionToAnyone(DbSession session, ComponentDto... projects) {
     for (ComponentDto project : projects) {
-      roleDao.insertGroupRole(session, new GroupPermissionDto().setGroupId(null).setResourceId(project.getId()).setRole(UserRole.USER));
+      dbClient.groupPermissionDao().insert(session, new GroupPermissionDto().setGroupId(null).setResourceId(project.getId()).setRole(UserRole.USER));
     }
   }
 

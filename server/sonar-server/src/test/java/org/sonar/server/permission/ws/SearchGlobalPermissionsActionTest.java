@@ -144,7 +144,7 @@ public class SearchGlobalPermissionsActionTest {
   }
 
   private void insertGroupRole(GroupPermissionDto group) {
-    db.getDbClient().roleDao().insertGroupRole(db.getSession(), group);
+    db.getDbClient().groupPermissionDao().insert(db.getSession(), group);
   }
 
   private static UserDto newUserDto(String login, String name) {
