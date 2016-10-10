@@ -73,7 +73,7 @@ public class DeleteActionTest {
         db.getDbClient(),
         userSession,
         newGroupWsSupport(),
-        settings)));
+        settings, defaultOrganizationProvider)));
   }
 
   @Test
@@ -185,11 +185,25 @@ public class DeleteActionTest {
   }
 
   @Test(expected = IllegalArgumentException.class)
-  public void cannot_delete_default_group() throws Exception {
+  public void cannot_delete_default_group_of_default_organization() throws Exception {
     loginAsAdmin();
     newRequest()
       .setParam("id", defaultGroup.getId().toString())
       .execute();
+  }
+
+  @Test
+  public void delete_group_of_an_organization_even_if_name_is_default_group_of_default_organization() throws Exception {
+    OrganizationDto org = OrganizationTesting.insert(db, newOrganizationDto());
+    GroupDto group = userTester.insertGroup(org, defaultGroup.getName());
+
+    loginAsAdmin();
+    newRequest()
+      .setParam("id", group.getId().toString())
+      .execute();
+
+    assertThat(userTester.selectGroupById(defaultGroup.getId())).isNotNull();
+    assertThat(userTester.selectGroupById(group.getId())).isNull();
   }
 
   @Test

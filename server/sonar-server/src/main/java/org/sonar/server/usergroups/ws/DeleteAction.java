@@ -19,6 +19,7 @@
  */
 package org.sonar.server.usergroups.ws;
 
+import java.util.Optional;
 import org.sonar.api.CoreProperties;
 import org.sonar.api.config.Settings;
 import org.sonar.api.server.ws.Request;
@@ -28,9 +29,9 @@ import org.sonar.api.server.ws.WebService.NewController;
 import org.sonar.core.permission.GlobalPermissions;
 import org.sonar.db.DbClient;
 import org.sonar.db.DbSession;
-import org.sonar.db.MyBatis;
 import org.sonar.db.permission.PermissionQuery;
 import org.sonar.db.user.GroupDto;
+import org.sonar.server.organization.DefaultOrganizationProvider;
 import org.sonar.server.user.UserSession;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -45,12 +46,15 @@ public class DeleteAction implements UserGroupsWsAction {
   private final UserSession userSession;
   private final GroupWsSupport support;
   private final Settings settings;
+  private final DefaultOrganizationProvider defaultOrganizationProvider;
 
-  public DeleteAction(DbClient dbClient, UserSession userSession, GroupWsSupport support, Settings settings) {
+  public DeleteAction(DbClient dbClient, UserSession userSession, GroupWsSupport support, Settings settings,
+    DefaultOrganizationProvider defaultOrganizationProvider) {
     this.dbClient = dbClient;
     this.userSession = userSession;
     this.support = support;
     this.settings = settings;
+    this.defaultOrganizationProvider = defaultOrganizationProvider;
   }
 
   @Override
@@ -85,16 +89,23 @@ public class DeleteAction implements UserGroupsWsAction {
       dbSession.commit();
       response.noContent();
     } finally {
-      MyBatis.closeQuietly(dbSession);
+      dbClient.closeSession(dbSession);
     }
   }
 
+  /**
+   * The property "default group" is used when registering a new user so that
+   * he automatically becomes a member of this group. This feature does not
+   * not exist on non-default organizations yet as organization settings
+   * are not implemented.
+   */
   private void checkNotTryingToDeleteDefaultGroup(DbSession dbSession, GroupId group) {
-    // TODO support organizations
     String defaultGroupName = settings.getString(CoreProperties.CORE_DEFAULT_GROUP);
-    GroupDto defaultGroup = dbClient.groupDao().selectOrFailByName(dbSession, defaultGroupName);
-    checkArgument(group.getId() != defaultGroup.getId().longValue(),
-      format("Default group '%s' cannot be deleted", defaultGroupName));
+    if (defaultGroupName != null && group.getOrganizationUuid().equals(defaultOrganizationProvider.get().getUuid())) {
+      Optional<GroupDto> defaultGroup = dbClient.groupDao().selectByName(dbSession, group.getOrganizationUuid(), defaultGroupName);
+      checkArgument(!defaultGroup.isPresent() || defaultGroup.get().getId() != group.getId(),
+        format("Default group '%s' cannot be deleted", defaultGroupName));
+    }
   }
 
   private void checkNotTryingToDeleteLastSystemAdminGroup(DbSession dbSession, GroupId group) {
