@@ -28,7 +28,7 @@ import org.sonar.api.server.ws.WebService;
 import org.sonar.db.DbClient;
 import org.sonar.db.DbSession;
 import org.sonar.db.permission.template.PermissionTemplateDto;
-import org.sonar.server.permission.ws.PermissionDependenciesFinder;
+import org.sonar.server.permission.ws.PermissionWsSupport;
 import org.sonar.server.permission.ws.PermissionsWsAction;
 import org.sonar.server.platform.PersistentSettings;
 import org.sonar.server.user.UserSession;
@@ -38,7 +38,7 @@ import static org.sonar.server.permission.DefaultPermissionTemplates.defaultRoot
 import static org.sonar.server.permission.PermissionPrivilegeChecker.checkGlobalAdminUser;
 import static org.sonar.server.permission.ws.PermissionRequestValidator.validateQualifier;
 import static org.sonar.server.permission.ws.PermissionsWsParametersBuilder.createTemplateParameters;
-import static org.sonar.server.permission.ws.WsTemplateRef.newTemplateRef;
+import static org.sonar.server.permission.ws.template.WsTemplateRef.newTemplateRef;
 import static org.sonar.server.ws.WsParameterBuilder.QualifierParameterContext.newQualifierParameterContext;
 import static org.sonar.server.ws.WsParameterBuilder.createRootQualifierParameter;
 import static org.sonarqube.ws.client.permission.PermissionsWsParameters.PARAM_QUALIFIER;
@@ -47,16 +47,16 @@ import static org.sonarqube.ws.client.permission.PermissionsWsParameters.PARAM_T
 
 public class SetDefaultTemplateAction implements PermissionsWsAction {
   private final DbClient dbClient;
-  private final PermissionDependenciesFinder finder;
+  private final PermissionWsSupport wsSupport;
   private final ResourceTypes resourceTypes;
   private final PersistentSettings settings;
   private final UserSession userSession;
   private final I18n i18n;
 
-  public SetDefaultTemplateAction(DbClient dbClient, PermissionDependenciesFinder finder, ResourceTypes resourceTypes, PersistentSettings settings, UserSession userSession,
-    I18n i18n) {
+  public SetDefaultTemplateAction(DbClient dbClient, PermissionWsSupport wsSupport, ResourceTypes resourceTypes, PersistentSettings settings, UserSession userSession,
+                                  I18n i18n) {
     this.dbClient = dbClient;
-    this.finder = finder;
+    this.wsSupport = wsSupport;
     this.resourceTypes = resourceTypes;
     this.settings = settings;
     this.userSession = userSession;
@@ -102,7 +102,7 @@ public class SetDefaultTemplateAction implements PermissionsWsAction {
   private PermissionTemplateDto getTemplate(SetDefaultTemplateWsRequest request) {
     DbSession dbSession = dbClient.openSession(false);
     try {
-      return finder.getTemplate(dbSession, newTemplateRef(request.getTemplateId(), request.getTemplateName()));
+      return wsSupport.findTemplate(dbSession, newTemplateRef(request.getTemplateId(), request.getTemplateName()));
     } finally {
       dbClient.closeSession(dbSession);
     }

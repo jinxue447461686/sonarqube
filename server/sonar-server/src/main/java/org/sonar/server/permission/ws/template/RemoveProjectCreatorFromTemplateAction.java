@@ -30,9 +30,8 @@ import org.sonar.db.DbSession;
 import org.sonar.db.permission.template.PermissionTemplateDto;
 import org.sonar.db.permission.template.PermissionTemplateCharacteristicDao;
 import org.sonar.db.permission.template.PermissionTemplateCharacteristicDto;
-import org.sonar.server.permission.ws.PermissionDependenciesFinder;
+import org.sonar.server.permission.ws.PermissionWsSupport;
 import org.sonar.server.permission.ws.PermissionsWsAction;
-import org.sonar.server.permission.ws.WsTemplateRef;
 import org.sonar.server.user.UserSession;
 import org.sonarqube.ws.client.permission.RemoveProjectCreatorFromTemplateWsRequest;
 
@@ -46,13 +45,13 @@ import static org.sonarqube.ws.client.permission.PermissionsWsParameters.PARAM_T
 
 public class RemoveProjectCreatorFromTemplateAction implements PermissionsWsAction {
   private final DbClient dbClient;
-  private final PermissionDependenciesFinder dependenciesFinder;
+  private final PermissionWsSupport wsSupport;
   private final UserSession userSession;
   private final System2 system;
 
-  public RemoveProjectCreatorFromTemplateAction(DbClient dbClient, PermissionDependenciesFinder dependenciesFinder, UserSession userSession, System2 system) {
+  public RemoveProjectCreatorFromTemplateAction(DbClient dbClient, PermissionWsSupport wsSupport, UserSession userSession, System2 system) {
     this.dbClient = dbClient;
-    this.dependenciesFinder = dependenciesFinder;
+    this.wsSupport = wsSupport;
     this.userSession = userSession;
     this.system = system;
   }
@@ -80,7 +79,7 @@ public class RemoveProjectCreatorFromTemplateAction implements PermissionsWsActi
   private void doHandle(RemoveProjectCreatorFromTemplateWsRequest request) {
     DbSession dbSession = dbClient.openSession(false);
     try {
-      PermissionTemplateDto template = dependenciesFinder.getTemplate(dbSession, WsTemplateRef.newTemplateRef(request.getTemplateId(), request.getTemplateName()));
+      PermissionTemplateDto template = wsSupport.findTemplate(dbSession, WsTemplateRef.newTemplateRef(request.getTemplateId(), request.getTemplateName()));
       PermissionTemplateCharacteristicDao dao = dbClient.permissionTemplateCharacteristicDao();
       Optional<PermissionTemplateCharacteristicDto> templatePermission = dao.selectByPermissionAndTemplateId(dbSession, request.getPermission(), template.getId());
       if (templatePermission.isPresent()) {
