@@ -20,7 +20,6 @@
 package org.sonar.db;
 
 import com.google.common.base.Joiner;
-import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
@@ -69,6 +68,7 @@ import org.sonar.db.organization.OrganizationDto;
 import org.sonar.db.organization.OrganizationTesting;
 
 import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.Lists.newArrayList;
 import static com.google.common.collect.Maps.newHashMap;
 import static java.sql.ResultSetMetaData.columnNoNulls;
@@ -89,6 +89,7 @@ public class DbTester extends ExternalResource {
   private DbSession session = null;
   private boolean disableDefaultOrganization = false;
   private boolean started = false;
+  private OrganizationDto defaultOrganization;
 
   private DbTester(System2 system2, @Nullable String schemaPath) {
     this.system2 = system2;
@@ -119,7 +120,7 @@ public class DbTester extends ExternalResource {
   }
 
   public DbTester setDisableDefaultOrganization(boolean b) {
-    Preconditions.checkState(!started, "DbTester is already started");
+    checkState(!started, "DbTester is already started");
     this.disableDefaultOrganization = b;
     return this;
   }
@@ -136,12 +137,17 @@ public class DbTester extends ExternalResource {
   }
 
   private void insertDefaultOrganization() {
-    OrganizationDto org = OrganizationTesting.newOrganizationDto();
+    defaultOrganization = OrganizationTesting.newOrganizationDto();
     try (DbSession dbSession = db.getMyBatis().openSession(false)) {
-      client.organizationDao().insert(dbSession, org);
-      client.internalPropertiesDao().save(dbSession, "organization.default", org.getUuid());
+      client.organizationDao().insert(dbSession, defaultOrganization);
+      client.internalPropertiesDao().save(dbSession, "organization.default", defaultOrganization.getUuid());
       dbSession.commit();
     }
+  }
+
+  public OrganizationDto getDefaultOrganization() {
+    checkState(defaultOrganization != null, "Default organization has not been created");
+    return defaultOrganization;
   }
 
   @Override
