@@ -145,6 +145,7 @@ public class GroupsAction implements PermissionsWsAction {
   }
 
   private List<GroupDto> findGroups(DbSession dbSession, PermissionQuery dbQuery) {
+    // TODO support organizations
     List<String> orderedNames = dbClient.groupPermissionDao().selectGroupNamesByPermissionQuery(dbSession, dbQuery);
     List<GroupDto> groups = dbClient.groupDao().selectByNames(dbSession, orderedNames);
     if (orderedNames.contains(DefaultGroups.ANYONE)) {

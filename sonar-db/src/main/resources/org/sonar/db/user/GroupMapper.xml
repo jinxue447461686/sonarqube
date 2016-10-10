@@ -84,15 +84,25 @@
   </update>
 
   <select id="selectByQuery" parameterType="map" resultType="Group">
-    SELECT
+    select
     <include refid="groupColumns"/>
-    FROM groups g
-    <where>
-      <if test="query!=null">
-        UPPER(g.name) LIKE #{query} ESCAPE '/'
-      </if>
-    </where>
-    ORDER BY UPPER(g.name)
+    from groups g
+    where
+    organization_uuid = #{organizationUuid}
+    <if test="query!=null">
+      and upper(g.name) like #{query} escape '/'
+    </if>
+    order by upper(g.name)
+  </select>
+
+  <select id="countByQuery" parameterType="map" resultType="int">
+    select count(1)
+    from groups g
+    where
+    organization_uuid = #{organizationUuid}
+    <if test="query!=null">
+      and upper(g.name) like #{query} escape '/'
+    </if>
   </select>
 
   <select id="selectByOrganizationUuid" parameterType="map" resultType="Group">
@@ -103,14 +113,6 @@
     order by upper(g.name)
   </select>
 
-  <select id="countByQuery" parameterType="map" resultType="int">
-    SELECT count(1)
-    FROM groups g
-    <where>
-      <if test="query!=null">
-        UPPER(g.name) LIKE #{query} ESCAPE '/'
-      </if>
-    </where>
-  </select>
+
 
 </mapper>

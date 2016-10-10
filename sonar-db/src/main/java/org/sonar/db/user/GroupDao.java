@@ -80,16 +80,12 @@ public class GroupDao implements Dao {
     mapper(dbSession).deleteById(groupId);
   }
 
-  /**
-   * @deprecated does not support organizations
-   */
-  @Deprecated
-  public int countByQuery(DbSession session, @Nullable String query) {
-    return mapper(session).countByQuery(groupSearchToSql(query));
+  public int countByQuery(DbSession session, String organizationUuid, @Nullable String query) {
+    return mapper(session).countByQuery(organizationUuid, groupSearchToSql(query));
   }
 
-  public List<GroupDto> selectByQuery(DbSession session, @Nullable String query, int offset, int limit) {
-    return mapper(session).selectByQuery(groupSearchToSql(query), new RowBounds(offset, limit));
+  public List<GroupDto> selectByQuery(DbSession session, String organizationUuid, @Nullable String query, int offset, int limit) {
+    return mapper(session).selectByQuery(organizationUuid, groupSearchToSql(query), new RowBounds(offset, limit));
   }
 
   public GroupDto insert(DbSession session, GroupDto item) {

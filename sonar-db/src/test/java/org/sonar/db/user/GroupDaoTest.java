@@ -139,39 +139,39 @@ public class GroupDaoTest {
      */
 
     // Null query
-    assertThat(underTest.selectByQuery(dbSession, null, 0, 10))
+    assertThat(underTest.selectByQuery(dbSession, "org1", null, 0, 10))
       .hasSize(5)
       .extracting("name").containsOnly("customers-group1", "customers-group2", "customers-group3", "SONAR-ADMINS", "sonar-users");
 
     // Empty query
-    assertThat(underTest.selectByQuery(dbSession, "", 0, 10))
+    assertThat(underTest.selectByQuery(dbSession, "org1", "", 0, 10))
       .hasSize(5)
       .extracting("name").containsOnly("customers-group1", "customers-group2", "customers-group3", "SONAR-ADMINS", "sonar-users");
 
     // Filter on name
-    assertThat(underTest.selectByQuery(dbSession, "sonar", 0, 10))
+    assertThat(underTest.selectByQuery(dbSession, "org1", "sonar", 0, 10))
       .hasSize(2)
       .extracting("name").containsOnly("SONAR-ADMINS", "sonar-users");
 
     // Pagination
-    assertThat(underTest.selectByQuery(dbSession, null, 0, 3))
+    assertThat(underTest.selectByQuery(dbSession, "org1", null, 0, 3))
       .hasSize(3);
-    assertThat(underTest.selectByQuery(dbSession, null, 3, 3))
+    assertThat(underTest.selectByQuery(dbSession, "org1", null, 3, 3))
       .hasSize(2);
-    assertThat(underTest.selectByQuery(dbSession, null, 6, 3)).isEmpty();
-    assertThat(underTest.selectByQuery(dbSession, null, 0, 5))
+    assertThat(underTest.selectByQuery(dbSession, "org1", null, 6, 3)).isEmpty();
+    assertThat(underTest.selectByQuery(dbSession, "org1", null, 0, 5))
       .hasSize(5);
-    assertThat(underTest.selectByQuery(dbSession, null, 5, 5)).isEmpty();
+    assertThat(underTest.selectByQuery(dbSession, "org1", null, 5, 5)).isEmpty();
   }
 
   @Test
   public void select_by_query_with_special_characters() {
     String groupNameWithSpecialCharacters = "group%_%/name";
-    underTest.insert(dbSession, newGroupDto().setName(groupNameWithSpecialCharacters));
+    underTest.insert(dbSession, newGroupDto().setName(groupNameWithSpecialCharacters).setOrganizationUuid("org1"));
     db.commit();
 
-    List<GroupDto> result = underTest.selectByQuery(dbSession, "roup%_%/nam", 0, 10);
-    int resultCount = underTest.countByQuery(dbSession, "roup%_%/nam");
+    List<GroupDto> result = underTest.selectByQuery(dbSession, "org1", "roup%_%/nam", 0, 10);
+    int resultCount = underTest.countByQuery(dbSession, "org1", "roup%_%/nam");
 
     assertThat(result).hasSize(1);
     assertThat(result.get(0).getName()).isEqualTo(groupNameWithSpecialCharacters);
@@ -183,13 +183,13 @@ public class GroupDaoTest {
     db.prepareDbUnit(getClass(), "select_by_query.xml");
 
     // Null query
-    assertThat(underTest.countByQuery(dbSession, null)).isEqualTo(5);
+    assertThat(underTest.countByQuery(dbSession, "org1", null)).isEqualTo(5);
 
     // Empty query
-    assertThat(underTest.countByQuery(dbSession, "")).isEqualTo(5);
+    assertThat(underTest.countByQuery(dbSession, "org1", "")).isEqualTo(5);
 
     // Filter on name
-    assertThat(underTest.countByQuery(dbSession, "sonar")).isEqualTo(2);
+    assertThat(underTest.countByQuery(dbSession, "org1", "sonar")).isEqualTo(2);
   }
 
   @Test

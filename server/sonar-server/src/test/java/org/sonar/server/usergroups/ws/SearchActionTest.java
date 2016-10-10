@@ -27,6 +27,7 @@ import org.sonar.api.server.ws.WebService.Param;
 import org.sonar.api.utils.System2;
 import org.sonar.db.DbTester;
 import org.sonar.db.organization.OrganizationDto;
+import org.sonar.db.organization.OrganizationTesting;
 import org.sonar.db.user.GroupDto;
 import org.sonar.db.user.UserDbTester;
 import org.sonar.db.user.UserDto;
@@ -37,6 +38,7 @@ import org.sonar.server.ws.WsTester;
 
 import static org.apache.commons.lang.StringUtils.capitalize;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.sonar.db.organization.OrganizationTesting.newOrganizationDto;
 import static org.sonar.db.user.GroupTesting.newGroupDto;
 
 public class SearchActionTest {
@@ -50,13 +52,12 @@ public class SearchActionTest {
   @Rule
   public ExpectedException expectedException = ExpectedException.none();
 
-  private DefaultOrganizationProviderRule defaultOrganizationProvider = DefaultOrganizationProviderRule.create(db);
   private UserDbTester userTester = new UserDbTester(db);
   private WsTester ws;
 
   @Before
   public void setUp() {
-    ws = new WsTester(new UserGroupsWs(new SearchAction(db.getDbClient(), userSession)));
+    ws = new WsTester(new UserGroupsWs(new SearchAction(db.getDbClient(), userSession, newGroupWsSupport())));
   }
 
   @Test
@@ -67,11 +68,11 @@ public class SearchActionTest {
 
   @Test
   public void search_without_parameters() throws Exception {
-    insertGroup(defaultOrganizationProvider.getDto(), "users", 0);
-    insertGroup(defaultOrganizationProvider.getDto(), "admins", 0);
-    insertGroup(defaultOrganizationProvider.getDto(), "customer1", 0);
-    insertGroup(defaultOrganizationProvider.getDto(), "customer2", 0);
-    insertGroup(defaultOrganizationProvider.getDto(), "customer3", 0);
+    insertGroup(db.getDefaultOrganization(), "users", 0);
+    insertGroup(db.getDefaultOrganization(), "admins", 0);
+    insertGroup(db.getDefaultOrganization(), "customer1", 0);
+    insertGroup(db.getDefaultOrganization(), "customer2", 0);
+    insertGroup(db.getDefaultOrganization(), "customer3", 0);
 
     loginAsSimpleUser();
     newRequest().execute().assertJson(getClass(), "five_groups.json");
@@ -79,11 +80,11 @@ public class SearchActionTest {
 
   @Test
   public void search_with_members() throws Exception {
-    insertGroup(defaultOrganizationProvider.getDto(), "users", 5);
-    insertGroup(defaultOrganizationProvider.getDto(), "admins", 1);
-    insertGroup(defaultOrganizationProvider.getDto(), "customer1", 0);
-    insertGroup(defaultOrganizationProvider.getDto(), "customer2", 4);
-    insertGroup(defaultOrganizationProvider.getDto(), "customer3", 0);
+    insertGroup(db.getDefaultOrganization(), "users", 5);
+    insertGroup(db.getDefaultOrganization(), "admins", 1);
+    insertGroup(db.getDefaultOrganization(), "customer1", 0);
+    insertGroup(db.getDefaultOrganization(), "customer2", 4);
+    insertGroup(db.getDefaultOrganization(), "customer3", 0);
 
     loginAsSimpleUser();
     newRequest().execute().assertJson(getClass(), "with_members.json");
@@ -91,11 +92,11 @@ public class SearchActionTest {
 
   @Test
   public void search_with_query() throws Exception {
-    insertGroup(defaultOrganizationProvider.getDto(), "users", 0);
-    insertGroup(defaultOrganizationProvider.getDto(), "admins", 0);
-    insertGroup(defaultOrganizationProvider.getDto(), "customer%_%/1", 0);
-    insertGroup(defaultOrganizationProvider.getDto(), "customer%_%/2", 0);
-    insertGroup(defaultOrganizationProvider.getDto(), "customer%_%/3", 0);
+    insertGroup(db.getDefaultOrganization(), "users", 0);
+    insertGroup(db.getDefaultOrganization(), "admins", 0);
+    insertGroup(db.getDefaultOrganization(), "customer%_%/1", 0);
+    insertGroup(db.getDefaultOrganization(), "customer%_%/2", 0);
+    insertGroup(db.getDefaultOrganization(), "customer%_%/3", 0);
 
     loginAsSimpleUser();
     newRequest().setParam(Param.TEXT_QUERY, "tomer%_%/").execute().assertJson(getClass(), "customers.json");
@@ -103,11 +104,11 @@ public class SearchActionTest {
 
   @Test
   public void search_with_paging() throws Exception {
-    insertGroup(defaultOrganizationProvider.getDto(), "users", 0);
-    insertGroup(defaultOrganizationProvider.getDto(), "admins", 0);
-    insertGroup(defaultOrganizationProvider.getDto(), "customer1", 0);
-    insertGroup(defaultOrganizationProvider.getDto(), "customer2", 0);
-    insertGroup(defaultOrganizationProvider.getDto(), "customer3", 0);
+    insertGroup(db.getDefaultOrganization(), "users", 0);
+    insertGroup(db.getDefaultOrganization(), "admins", 0);
+    insertGroup(db.getDefaultOrganization(), "customer1", 0);
+    insertGroup(db.getDefaultOrganization(), "customer2", 0);
+    insertGroup(db.getDefaultOrganization(), "customer3", 0);
 
     loginAsSimpleUser();
     newRequest()
@@ -120,7 +121,7 @@ public class SearchActionTest {
 
   @Test
   public void search_with_fields() throws Exception {
-    insertGroup(defaultOrganizationProvider.getDto(), "sonar-users", 0);
+    insertGroup(db.getDefaultOrganization(), "sonar-users", 0);
 
     loginAsSimpleUser();
     assertThat(newRequest().execute().outputAsString())
@@ -155,7 +156,23 @@ public class SearchActionTest {
   }
 
   @Test
-  public void fail_when_not_logged() throws Exception {
+  public void search_in_organization() throws Exception {
+    OrganizationDto org = OrganizationTesting.insert(db, newOrganizationDto());
+    GroupDto group = userTester.insertGroup(org, "users");
+    // the group in default org is not returned
+    userTester.insertGroup(db.getDefaultOrganization(), "users");
+
+    loginAsSimpleUser();
+    newRequest()
+      .setParam("organizationKey", org.getKey())
+      .execute()
+      .assertJson(
+        "{\"total\":1,\"p\":1,\"ps\":100," +
+          "\"groups\":[{\"id\":\"" + group.getId() + "\",\"name\":\"users\"}]}\n");
+  }
+
+  @Test
+  public void fail_when_not_logged_in() throws Exception {
     userSession.anonymous();
 
     expectedException.expect(UnauthorizedException.class);
@@ -177,6 +194,10 @@ public class SearchActionTest {
 
   private void loginAsSimpleUser() {
     userSession.login("user");
+  }
+
+  private GroupWsSupport newGroupWsSupport() {
+    return new GroupWsSupport(db.getDbClient(), DefaultOrganizationProviderRule.create(db));
   }
 
 }
