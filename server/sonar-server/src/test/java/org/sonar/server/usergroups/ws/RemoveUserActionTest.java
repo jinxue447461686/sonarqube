@@ -25,26 +25,18 @@ import org.junit.Test;
 import org.junit.rules.ExpectedException;
 import org.sonar.api.utils.System2;
 import org.sonar.core.permission.GlobalPermissions;
-import org.sonar.db.DbSession;
 import org.sonar.db.DbTester;
 import org.sonar.db.organization.OrganizationDto;
 import org.sonar.db.organization.OrganizationTesting;
-import org.sonar.db.user.GroupDbTester;
 import org.sonar.db.user.GroupDto;
-import org.sonar.db.user.GroupMembershipDao;
-import org.sonar.db.user.GroupTesting;
-import org.sonar.db.user.UserDao;
+import org.sonar.db.user.UserDbTester;
 import org.sonar.db.user.UserDto;
-import org.sonar.db.user.UserGroupDao;
-import org.sonar.db.user.UserGroupDto;
 import org.sonar.server.exceptions.NotFoundException;
 import org.sonar.server.organization.DefaultOrganizationProviderRule;
 import org.sonar.server.tester.UserSessionRule;
 import org.sonar.server.ws.WsTester;
 
-import static java.util.Arrays.asList;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.sonar.db.user.GroupTesting.newGroupDto;
 import static org.sonar.server.usergroups.ws.GroupWsSupport.PARAM_GROUP_NAME;
 import static org.sonar.server.usergroups.ws.GroupWsSupport.PARAM_LOGIN;
 import static org.sonar.server.usergroups.ws.GroupWsSupport.PARAM_ORGANIZATION_KEY;
@@ -54,100 +46,75 @@ public class RemoveUserActionTest {
   @Rule
   public DbTester db = DbTester.create(System2.INSTANCE);
   @Rule
-  public final UserSessionRule userSession = UserSessionRule.standalone();
+  public UserSessionRule userSession = UserSessionRule.standalone();
   @Rule
-  public final ExpectedException expectedException = ExpectedException.none();
-  @Rule
-  public DefaultOrganizationProviderRule defaultOrganizationProvider = DefaultOrganizationProviderRule.create(db);
-  private GroupDbTester groupTester = new GroupDbTester(db);
+  public ExpectedException expectedException = ExpectedException.none();
 
+  private DefaultOrganizationProviderRule defaultOrganizationProvider = DefaultOrganizationProviderRule.create(db);
+  private UserDbTester userTester = new UserDbTester(db);
   private WsTester ws;
-  private UserDao userDao;
-  private GroupMembershipDao groupMembershipDao;
-  private UserGroupDao userGroupDao;
-  private DbSession dbSession;
 
   @Before
   public void setUp() {
-    dbSession = db.getSession();
-
-    org.sonar.db.DbClient dbClient = db.getDbClient();
-    userDao = dbClient.userDao();
-    groupMembershipDao = dbClient.groupMembershipDao();
-    userGroupDao = dbClient.userGroupDao();
-
     GroupWsSupport groupSupport = new GroupWsSupport(db.getDbClient(), defaultOrganizationProvider);
-    ws = new WsTester(new UserGroupsWs(new RemoveUserAction(dbClient, userSession, groupSupport)));
+    ws = new WsTester(new UserGroupsWs(new RemoveUserAction(db.getDbClient(), userSession, groupSupport)));
   }
 
   @Test
   public void does_nothing_if_user_is_not_in_group() throws Exception {
-    GroupDto group = insertGroupInDefaultOrganization("admins");
-    UserDto user = insertUser("my-admin");
-    dbSession.commit();
+    GroupDto group = userTester.insertGroup(defaultOrganizationProvider.getDto(), "admins");
+    UserDto user = userTester.insertUser("my-admin");
 
-    userSession.login("admin").setGlobalPermissions(GlobalPermissions.SYSTEM_ADMIN);
+    loginAsAdmin();
     newRequest()
       .setParam("id", group.getId().toString())
       .setParam("login", user.getLogin())
       .execute()
       .assertNoContent();
 
-    assertThat(groupMembershipDao.selectGroupsByLogins(dbSession, asList(user.getLogin())).get(user.getLogin()))
-      .isEmpty();
+    assertThat(userTester.selectGroupIdsOfUser(user)).isEmpty();
   }
 
   @Test
   public void remove_user_by_group_id() throws Exception {
-    GroupDto users = insertGroupInDefaultOrganization("users");
-    UserDto user = insertUser("my-admin");
-    insertMember(users.getId(), user.getId());
-    dbSession.commit();
+    GroupDto users = userTester.insertGroup(defaultOrganizationProvider.getDto(), "users");
+    UserDto user = userTester.insertUser("my-admin");
+    userTester.insertMember(users, user);
 
-    userSession.login("admin").setGlobalPermissions(GlobalPermissions.SYSTEM_ADMIN);
-
+    loginAsAdmin();
     newRequest()
       .setParam("id", users.getId().toString())
       .setParam("login", user.getLogin())
       .execute()
       .assertNoContent();
 
-    assertThat(groupMembershipDao.selectGroupsByLogins(dbSession, asList(user.getLogin())).get(user.getLogin()))
-      .isEmpty();
+    assertThat(userTester.selectGroupIdsOfUser(user)).isEmpty();
   }
 
   @Test
   public void remove_user_by_group_name_in_default_organization() throws Exception {
-    GroupDto group = insertGroupInDefaultOrganization("group_name");
-    UserDto user = insertUser("user_login");
-    insertMember(group.getId(), user.getId());
-    assertThat(groupMembershipDao.selectGroupsByLogins(dbSession, asList(user.getLogin())).get(user.getLogin()))
-      .isNotEmpty();
-    db.commit();
+    GroupDto group = userTester.insertGroup(defaultOrganizationProvider.getDto(), "group_name");
+    UserDto user = userTester.insertUser("user_login");
+    userTester.insertMember(group, user);
 
-    userSession.login("admin").setGlobalPermissions(GlobalPermissions.SYSTEM_ADMIN);
+    loginAsAdmin();
     newRequest()
       .setParam(PARAM_GROUP_NAME, group.getName())
       .setParam(PARAM_LOGIN, user.getLogin())
       .execute()
       .assertNoContent();
 
-    assertThat(groupMembershipDao.selectGroupsByLogins(dbSession, asList(user.getLogin())).get(user.getLogin()))
-      .isEmpty();
+    assertThat(userTester.selectGroupIdsOfUser(user)).isEmpty();
   }
 
   @Test
   public void remove_user_by_group_name_in_specific_organization() throws Exception {
-    OrganizationDto org = OrganizationTesting.newOrganizationDto();
-    OrganizationTesting.insert(db, org);
-    GroupDto group = groupTester.insertGroup(GroupTesting.newGroupDto().setName("a_group").setOrganizationUuid(org.getUuid()));
-    UserDto user = insertUser("user_login");
-    insertMember(group.getId(), user.getId());
-    assertThat(groupMembershipDao.selectGroupsByLogins(dbSession, asList(user.getLogin())).get(user.getLogin()))
-      .isNotEmpty();
-    db.commit();
+    OrganizationDto org = OrganizationTesting.insert(db, OrganizationTesting.newOrganizationDto());
+    GroupDto group = userTester.insertGroup(org, "a_group");
+    UserDto user = userTester.insertUser("user_login");
+    userTester.insertMember(group, user);
 
-    userSession.login("admin").setGlobalPermissions(GlobalPermissions.SYSTEM_ADMIN);
+    loginAsAdmin();
     newRequest()
       .setParam(PARAM_ORGANIZATION_KEY, org.getKey())
       .setParam(PARAM_GROUP_NAME, group.getName())
@@ -155,38 +122,34 @@ public class RemoveUserActionTest {
       .execute()
       .assertNoContent();
 
-    assertThat(groupMembershipDao.selectGroupsByLogins(dbSession, asList(user.getLogin())).get(user.getLogin()))
-      .isEmpty();
+    assertThat(userTester.selectGroupIdsOfUser(user)).isEmpty();
   }
 
   @Test
   public void remove_user_only_from_one_group() throws Exception {
-    GroupDto users = insertGroupInDefaultOrganization("user");
-    GroupDto admins = insertGroupInDefaultOrganization("admins");
-    UserDto user = insertUser("user");
-    insertMember(users.getId(), user.getId());
-    insertMember(admins.getId(), user.getId());
-    dbSession.commit();
+    GroupDto users = userTester.insertGroup(defaultOrganizationProvider.getDto(), "user");
+    GroupDto admins = userTester.insertGroup(defaultOrganizationProvider.getDto(), "admins");
+    UserDto user = userTester.insertUser("user");
+    userTester.insertMember(users, user);
+    userTester.insertMember(admins, user);
 
-    userSession.login("admin").setGlobalPermissions(GlobalPermissions.SYSTEM_ADMIN);
+    loginAsAdmin();
     newRequest()
       .setParam("id", admins.getId().toString())
       .setParam("login", user.getLogin())
       .execute()
       .assertNoContent();
 
-    assertThat(groupMembershipDao.selectGroupsByLogins(dbSession, asList(user.getLogin())).get(user.getLogin()))
-      .containsOnly(users.getName());
+    assertThat(userTester.selectGroupIdsOfUser(user)).containsOnly(users.getId());
   }
 
   @Test
-  public void unknown_group() throws Exception {
-    UserDto user = insertUser("my-admin");
-    dbSession.commit();
+  public void fail_if_unknown_group() throws Exception {
+    UserDto user = userTester.insertUser("my-admin");
 
     expectedException.expect(NotFoundException.class);
 
-    userSession.login("admin").setGlobalPermissions(GlobalPermissions.SYSTEM_ADMIN);
+    loginAsAdmin();
     newRequest()
       .setParam("id", "42")
       .setParam("login", user.getLogin())
@@ -194,13 +157,12 @@ public class RemoveUserActionTest {
   }
 
   @Test
-  public void unknown_user() throws Exception {
-    GroupDto group = insertGroupInDefaultOrganization("admins");
-    dbSession.commit();
+  public void fail_if_unknown_user() throws Exception {
+    GroupDto group = userTester.insertGroup(defaultOrganizationProvider.getDto(), "admins");
 
     expectedException.expect(NotFoundException.class);
 
-    userSession.login("admin").setGlobalPermissions(GlobalPermissions.SYSTEM_ADMIN);
+    loginAsAdmin();
     newRequest()
       .setParam("id", group.getId().toString())
       .setParam("login", "my-admin")
@@ -211,17 +173,8 @@ public class RemoveUserActionTest {
     return ws.newPostRequest("api/user_groups", "remove_user");
   }
 
-  private UserDto insertUser(String login) {
-    return userDao.insert(dbSession, new UserDto().setLogin(login).setName(login).setActive(true));
+  private void loginAsAdmin() {
+    userSession.login("admin").setGlobalPermissions(GlobalPermissions.SYSTEM_ADMIN);
   }
 
-  private void insertMember(long groupId, long userId) {
-    userGroupDao.insert(dbSession, new UserGroupDto().setGroupId(groupId).setUserId(userId));
-  }
-
-  private GroupDto insertGroupInDefaultOrganization(String name) {
-    GroupDto group = newGroupDto().setName(name).setOrganizationUuid(defaultOrganizationProvider.get().getUuid());
-    groupTester.insertGroup(group);
-    return group;
-  }
 }

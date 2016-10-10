@@ -19,28 +19,26 @@
  */
 package org.sonar.server.usergroups.ws;
 
-import com.google.common.collect.Multimap;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
 import org.sonar.api.utils.System2;
 import org.sonar.core.permission.GlobalPermissions;
-import org.sonar.db.DbSession;
 import org.sonar.db.DbTester;
 import org.sonar.db.organization.OrganizationDto;
+import org.sonar.db.organization.OrganizationTesting;
 import org.sonar.db.user.GroupDto;
+import org.sonar.db.user.UserDbTester;
 import org.sonar.db.user.UserDto;
-import org.sonar.db.user.UserGroupDto;
 import org.sonar.server.exceptions.NotFoundException;
-import org.sonar.server.organization.DefaultOrganizationProviderImpl;
+import org.sonar.server.exceptions.UnauthorizedException;
+import org.sonar.server.organization.DefaultOrganizationProviderRule;
 import org.sonar.server.tester.UserSessionRule;
 import org.sonar.server.ws.WsTester;
 
-import static java.util.Arrays.asList;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.sonar.db.organization.OrganizationTesting.newOrganizationDto;
-import static org.sonar.db.user.GroupTesting.newGroupDto;
 import static org.sonar.server.usergroups.ws.GroupWsSupport.PARAM_GROUP_NAME;
 import static org.sonar.server.usergroups.ws.GroupWsSupport.PARAM_LOGIN;
 import static org.sonar.server.usergroups.ws.GroupWsSupport.PARAM_ORGANIZATION_KEY;
@@ -54,121 +52,121 @@ public class AddUserActionTest {
   @Rule
   public ExpectedException expectedException = ExpectedException.none();
 
-  private OrganizationDto organization = newOrganizationDto();
+  private DefaultOrganizationProviderRule defaultOrganizationProvider = DefaultOrganizationProviderRule.create(db);
+  private UserDbTester tester = new UserDbTester(db);
   private WsTester ws;
-  private DbSession dbSession;
 
   @Before
   public void setUp() {
-    dbSession = db.getSession();
-    db.getDbClient().organizationDao().insert(dbSession, organization);
-
-    GroupWsSupport groupSupport = new GroupWsSupport(db.getDbClient(), new DefaultOrganizationProviderImpl(db.getDbClient()));
-    ws = new WsTester(new UserGroupsWs(new AddUserAction(db.getDbClient(), userSession, groupSupport)));
+    ws = new WsTester(new UserGroupsWs(new AddUserAction(db.getDbClient(), userSession, newGroupWsSupport())));
   }
 
   @Test
-  public void add_user_nominal() throws Exception {
-    GroupDto group = insertGroup("admins");
-    UserDto user = insertUser("my-admin");
-    dbSession.commit();
+  public void add_user_to_group_referenced_by_its_id() throws Exception {
+    GroupDto group = tester.insertGroup(defaultOrganizationProvider.getDto(), "admins");
+    UserDto user = tester.insertUser("my-admin");
 
-    userSession.login("admin").setGlobalPermissions(GlobalPermissions.SYSTEM_ADMIN);
+    loginAsAdmin();
     newRequest()
       .setParam("id", group.getId().toString())
       .setParam("login", user.getLogin())
       .execute()
       .assertNoContent();
 
-    assertThat(db.getDbClient().groupMembershipDao().selectGroupsByLogins(dbSession, asList(user.getLogin())).get(user.getLogin()))
-      .containsOnly(group.getName());
+    assertThat(tester.selectGroupIdsOfUser(user)).containsOnly(group.getId());
   }
 
   @Test
-  public void add_user_with_group_name() throws Exception {
-    GroupDto group = insertGroup("a-group");
-    UserDto user = insertUser("user_login");
-    assertThat(db.getDbClient().groupMembershipDao().selectGroupsByLogins(dbSession, asList(user.getLogin())).get(user.getLogin()))
-      .isEmpty();
-    dbSession.commit();
+  public void add_user_to_group_referenced_by_its_name() throws Exception {
+    GroupDto group = tester.insertGroup(defaultOrganizationProvider.getDto(), "a-group");
+    UserDto user = tester.insertUser("user_login");
 
-    userSession.login("admin").setGlobalPermissions(GlobalPermissions.SYSTEM_ADMIN);
+    loginAsAdmin();
     newRequest()
-      .setParam(PARAM_ORGANIZATION_KEY, organization.getKey())
       .setParam(PARAM_GROUP_NAME, group.getName())
       .setParam(PARAM_LOGIN, user.getLogin())
       .execute()
       .assertNoContent();
 
-    assertThat(db.getDbClient().groupMembershipDao().selectGroupsByLogins(dbSession, asList(user.getLogin())).get(user.getLogin()))
-      .containsOnly(group.getName());
+    assertThat(tester.selectGroupIdsOfUser(user)).containsOnly(group.getId());
+  }
+
+  @Test
+  public void add_user_to_group_referenced_by_its_name_and_organization() throws Exception {
+    OrganizationDto org = OrganizationTesting.insert(db, newOrganizationDto());
+    GroupDto group = tester.insertGroup(org, "a-group");
+    UserDto user = tester.insertUser("user_login");
+
+    loginAsAdmin();
+    newRequest()
+      .setParam(PARAM_ORGANIZATION_KEY, org.getKey())
+      .setParam(PARAM_GROUP_NAME, group.getName())
+      .setParam(PARAM_LOGIN, user.getLogin())
+      .execute()
+      .assertNoContent();
+
+    assertThat(tester.selectGroupIdsOfUser(user)).containsOnly(group.getId());
   }
 
   @Test
   public void add_user_to_another_group() throws Exception {
-    GroupDto admins = insertGroup("admins");
-    GroupDto users = insertGroup("users");
-    UserDto user = insertUser("my-admin");
-    insertMember(users.getId(), user.getId());
-    dbSession.commit();
+    GroupDto admins = tester.insertGroup(defaultOrganizationProvider.getDto(), "admins");
+    GroupDto users = tester.insertGroup(defaultOrganizationProvider.getDto(), "users");
+    UserDto user = tester.insertUser("my-admin");
+    tester.insertMember(users, user);
 
-    userSession.login("admin").setGlobalPermissions(GlobalPermissions.SYSTEM_ADMIN);
+    loginAsAdmin();
     newRequest()
       .setParam("id", admins.getId().toString())
       .setParam("login", user.getLogin())
       .execute()
       .assertNoContent();
 
-    assertThat(db.getDbClient().groupMembershipDao().selectGroupsByLogins(dbSession, asList(user.getLogin())).get(user.getLogin()))
-      .containsOnly(admins.getName(), users.getName());
+    assertThat(tester.selectGroupIdsOfUser(user)).containsOnly(admins.getId(), users.getId());
   }
 
   @Test
-  public void add_user_already_in_group() throws Exception {
-    GroupDto users = insertGroup("users");
-    UserDto user = insertUser("my-admin");
-    insertMember(users.getId(), user.getId());
-    dbSession.commit();
+  public void user_is_already_member_of_group() throws Exception {
+    GroupDto users = tester.insertGroup(defaultOrganizationProvider.getDto(), "users");
+    UserDto user = tester.insertUser("my-admin");
+    tester.insertMember(users, user);
 
-    userSession.login("admin").setGlobalPermissions(GlobalPermissions.SYSTEM_ADMIN);
+    loginAsAdmin();
     newRequest()
       .setParam("id", users.getId().toString())
       .setParam("login", user.getLogin())
       .execute()
       .assertNoContent();
 
-    assertThat(db.getDbClient().groupMembershipDao().selectGroupsByLogins(dbSession, asList(user.getLogin())).get(user.getLogin()))
-      .containsOnly(users.getName());
+    // do not insert duplicated row
+    assertThat(tester.selectGroupIdsOfUser(user)).hasSize(1).containsOnly(users.getId());
   }
 
   @Test
-  public void add_another_user_to_group() throws Exception {
-    GroupDto users = insertGroup("user");
-    UserDto user1 = insertUser("user1");
-    UserDto user2 = insertUser("user2");
-    insertMember(users.getId(), user1.getId());
-    dbSession.commit();
+  public void group_has_multiple_members() throws Exception {
+    GroupDto users = tester.insertGroup(defaultOrganizationProvider.getDto(), "user");
+    UserDto user1 = tester.insertUser("user1");
+    UserDto user2 = tester.insertUser("user2");
+    tester.insertMember(users, user1);
 
-    userSession.login("admin").setGlobalPermissions(GlobalPermissions.SYSTEM_ADMIN);
+    loginAsAdmin();
     newRequest()
       .setParam("id", users.getId().toString())
       .setParam("login", user2.getLogin())
       .execute()
       .assertNoContent();
 
-    Multimap<String, String> groupsByLogins = db.getDbClient().groupMembershipDao().selectGroupsByLogins(dbSession, asList(user1.getLogin(), user2.getLogin()));
-    assertThat(groupsByLogins.get(user1.getLogin())).containsOnly(users.getName());
-    assertThat(groupsByLogins.get(user2.getLogin())).containsOnly(users.getName());
+    assertThat(tester.selectGroupIdsOfUser(user1)).containsOnly(users.getId());
+    assertThat(tester.selectGroupIdsOfUser(user2)).containsOnly(users.getId());
   }
 
   @Test
-  public void unknown_group() throws Exception {
-    UserDto user = insertUser("my-admin");
-    dbSession.commit();
+  public void fail_if_group_does_not_exist() throws Exception {
+    UserDto user = tester.insertUser("my-admin");
 
     expectedException.expect(NotFoundException.class);
 
-    userSession.login("admin").setGlobalPermissions(GlobalPermissions.SYSTEM_ADMIN);
+    loginAsAdmin();
     newRequest()
       .setParam("id", "42")
       .setParam("login", user.getLogin())
@@ -176,16 +174,28 @@ public class AddUserActionTest {
   }
 
   @Test
-  public void unknown_user() throws Exception {
-    GroupDto group = insertGroup("admins");
-    dbSession.commit();
+  public void fail_if_user_does_not_exist() throws Exception {
+    GroupDto group = tester.insertGroup(defaultOrganizationProvider.getDto(), "admins");
 
     expectedException.expect(NotFoundException.class);
 
-    userSession.login("admin").setGlobalPermissions(GlobalPermissions.SYSTEM_ADMIN);
+    loginAsAdmin();
     newRequest()
       .setParam("id", group.getId().toString())
       .setParam("login", "my-admin")
+      .execute();
+  }
+
+  @Test
+  public void fail_if_not_administrator() throws Exception {
+    GroupDto group = tester.insertGroup(defaultOrganizationProvider.getDto(), "admins");
+    UserDto user = tester.insertUser("my-admin");
+
+    expectedException.expect(UnauthorizedException.class);
+
+    newRequest()
+      .setParam("id", group.getId().toString())
+      .setParam("login", user.getLogin())
       .execute();
   }
 
@@ -193,17 +203,12 @@ public class AddUserActionTest {
     return ws.newPostRequest("api/user_groups", "add_user");
   }
 
-  private GroupDto insertGroup(String name) {
-    GroupDto group = newGroupDto().setName(name).setOrganizationUuid(organization.getUuid());
-    db.getDbClient().groupDao().insert(dbSession, group);
-    return group;
+  private void loginAsAdmin() {
+    userSession.login("admin").setGlobalPermissions(GlobalPermissions.SYSTEM_ADMIN);
   }
 
-  private UserDto insertUser(String login) {
-    return db.getDbClient().userDao().insert(dbSession, new UserDto().setLogin(login).setName(login).setActive(true));
+  private GroupWsSupport newGroupWsSupport() {
+    return new GroupWsSupport(db.getDbClient(), defaultOrganizationProvider);
   }
 
-  private void insertMember(long groupId, long userId) {
-    db.getDbClient().userGroupDao().insert(dbSession, new UserGroupDto().setGroupId(groupId).setUserId(userId));
-  }
 }

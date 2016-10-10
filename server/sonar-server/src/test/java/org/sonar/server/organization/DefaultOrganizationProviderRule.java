@@ -19,12 +19,28 @@
  */
 package org.sonar.server.organization;
 
-import org.junit.rules.ExternalResource;
+import java.util.Optional;
+import org.sonar.db.DbSession;
 import org.sonar.db.DbTester;
+import org.sonar.db.organization.OrganizationDto;
+import org.sonar.server.property.InternalProperties;
 
-public class DefaultOrganizationProviderRule extends ExternalResource implements DefaultOrganizationProvider {
+import static com.google.common.base.Preconditions.checkState;
+
+public class DefaultOrganizationProviderRule implements DefaultOrganizationProvider {
 
   private final DbTester dbTester;
+  private OrganizationDto dto;
+
+  private static DefaultOrganization toDefaultOrganization(OrganizationDto organizationDto) {
+    return DefaultOrganization.newBuilder()
+      .setUuid(organizationDto.getUuid())
+      .setKey(organizationDto.getKey())
+      .setName(organizationDto.getName())
+      .setCreatedAt(organizationDto.getCreatedAt())
+      .setUpdatedAt(organizationDto.getUpdatedAt())
+      .build();
+  }
 
   private DefaultOrganizationProviderRule(DbTester dbTester) {
     this.dbTester = dbTester;
@@ -34,9 +50,22 @@ public class DefaultOrganizationProviderRule extends ExternalResource implements
     return new DefaultOrganizationProviderRule(dbTester);
   }
 
-
   @Override
   public DefaultOrganization get() {
-    return new DefaultOrganizationProviderImpl(dbTester.getDbClient()).get();
+    DbSession dbSession = dbTester.getSession();
+    Optional<String> uuid = dbTester.getDbClient().internalPropertiesDao().selectByKey(dbSession, InternalProperties.DEFAULT_ORGANIZATION);
+    checkState(uuid.isPresent() && !uuid.get().isEmpty(), "No Default organization uuid configured");
+    Optional<OrganizationDto> dto = dbTester.getDbClient().organizationDao().selectByUuid(dbSession, uuid.get());
+    checkState(dto.isPresent(), "Default organization with uuid '%s' does not exist", uuid.get());
+    return toDefaultOrganization(dto.get());
+  }
+
+  public OrganizationDto getDto() {
+    if (dto == null) {
+      String uuid = get().getUuid();
+      dto = dbTester.getDbClient().organizationDao().selectByUuid(dbTester.getSession(), uuid)
+        .orElseThrow(() -> new IllegalStateException("Missing default organization in database [uuid=" + uuid + "]"));
+    }
+    return dto;
   }
 }

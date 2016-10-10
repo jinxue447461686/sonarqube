@@ -24,40 +24,42 @@ import org.junit.Test;
 import org.junit.rules.ExpectedException;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.sonar.server.usergroups.ws.GroupRef.fromName;
+import static org.sonar.server.usergroups.ws.GroupWsRef.fromName;
 
-public class GroupRefTest {
+public class GroupWsRefTest {
 
   @Rule
   public ExpectedException expectedException = ExpectedException.none();
 
   @Test
   public void test_ref_by_id() {
-    GroupRef ref = GroupRef.fromId(10L);
+    GroupWsRef ref = GroupWsRef.fromId(10L);
     assertThat(ref.hasId()).isTrue();
     assertThat(ref.getId()).isEqualTo(10L);
+    assertThat(ref.isAnyone()).isFalse();
   }
 
   @Test
   public void test_ref_by_name() {
-    GroupRef ref = fromName("ORG1", "the-group");
+    GroupWsRef ref = fromName("ORG1", "the-group");
     assertThat(ref.hasId()).isFalse();
     assertThat(ref.getOrganizationUuid()).isEqualTo("ORG1");
     assertThat(ref.getName()).isEqualTo("the-group");
+    assertThat(ref.isAnyone()).isFalse();
   }
 
   @Test
   public void test_equals_and_hashCode() {
-    GroupRef refId1 = GroupRef.fromId(10L);
-    GroupRef refId2 = GroupRef.fromId(11L);
+    GroupWsRef refId1 = GroupWsRef.fromId(10L);
+    GroupWsRef refId2 = GroupWsRef.fromId(11L);
     assertThat(refId1.equals(refId1)).isTrue();
-    assertThat(refId1.equals(GroupRef.fromId(10L))).isTrue();
-    assertThat(refId1.hashCode()).isEqualTo(GroupRef.fromId(10L).hashCode());
+    assertThat(refId1.equals(GroupWsRef.fromId(10L))).isTrue();
+    assertThat(refId1.hashCode()).isEqualTo(GroupWsRef.fromId(10L).hashCode());
     assertThat(refId1.equals(refId2)).isFalse();
 
-    GroupRef refName1 = fromName("ORG1", "the-group");
-    GroupRef refName2 = fromName("ORG1", "the-group2");
-    GroupRef refName3 = fromName("ORG2", "the-group2");
+    GroupWsRef refName1 = fromName("ORG1", "the-group");
+    GroupWsRef refName2 = fromName("ORG1", "the-group2");
+    GroupWsRef refName3 = fromName("ORG2", "the-group2");
     assertThat(refName1.equals(refName1)).isTrue();
     assertThat(refName1.equals(fromName("ORG1", "the-group"))).isTrue();
     assertThat(refName1.hashCode()).isEqualTo(fromName("ORG1", "the-group").hashCode());
@@ -67,7 +69,21 @@ public class GroupRefTest {
 
   @Test
   public void test_toString() {
-    GroupRef refId = GroupRef.fromId(10L);
-    assertThat(refId.toString()).isEqualTo("GroupRef{id=10, organizationUuid='null', name='null'}");
+    GroupWsRef refId = GroupWsRef.fromId(10L);
+    assertThat(refId.toString()).isEqualTo("GroupWsRef{id=10, organizationUuid='null', name='null'}");
+  }
+
+  @Test
+  public void reference_anyone_by_its_name() {
+    GroupWsRef ref = GroupWsRef.fromName("ORG_UUID", "Anyone");
+    assertThat(ref.getOrganizationUuid()).isEqualTo("ORG_UUID");
+    assertThat(ref.getName()).isEqualTo("Anyone");
+    assertThat(ref.isAnyone()).isTrue();
+
+    // case-insensitive
+    ref = GroupWsRef.fromName("ORG_UUID", "anyone");
+    assertThat(ref.getOrganizationUuid()).isEqualTo("ORG_UUID");
+    assertThat(ref.getName()).isEqualTo("anyone");
+    assertThat(ref.isAnyone()).isTrue();
   }
 }

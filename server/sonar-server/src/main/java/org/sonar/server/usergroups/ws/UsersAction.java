@@ -32,7 +32,6 @@ import org.sonar.core.permission.GlobalPermissions;
 import org.sonar.db.DbClient;
 import org.sonar.db.DbSession;
 import org.sonar.db.MyBatis;
-import org.sonar.db.user.GroupDto;
 import org.sonar.db.user.GroupMembershipQuery;
 import org.sonar.db.user.UserMembershipDto;
 import org.sonar.db.user.UserMembershipQuery;
@@ -82,11 +81,10 @@ public class UsersAction implements UserGroupsWsAction {
 
     DbSession dbSession = dbClient.openSession(false);
     try {
-      GroupDto group = support.findGroup(dbSession, request);
-      long groupId = group.getId();
+      GroupId group = support.findGroup(dbSession, request);
 
       UserMembershipQuery query = UserMembershipQuery.builder()
-        .groupId(groupId)
+        .groupId(group.getId())
         .memberSearch(queryString)
         .membership(getMembership(selected))
         .pageIndex(page)

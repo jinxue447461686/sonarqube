@@ -21,35 +21,45 @@ package org.sonar.server.usergroups.ws;
 
 import javax.annotation.CheckForNull;
 import javax.annotation.Nullable;
+import javax.annotation.concurrent.Immutable;
+import org.sonar.db.user.GroupDto;
 
-import static org.sonar.server.ws.WsUtils.checkRequest;
+import static java.util.Objects.requireNonNull;
 
-/**
- * Group from a WS request. Guaranties the group id or the group name is provided, not both.
- */
-public class WsGroupRef {
+@Immutable
+public class GroupIdOrAnyone {
 
   private final Long id;
-  private final String name;
+  private final String organizationUuid;
 
-  private WsGroupRef(@Nullable Long id, @Nullable String name) {
-    checkRequest(id != null ^ name != null, "Group name or group id must be provided, not both.");
-
+  public GroupIdOrAnyone(String organizationUuid, @Nullable Long id) {
     this.id = id;
-    this.name = name;
+    this.organizationUuid = requireNonNull(organizationUuid);
   }
 
-  public static WsGroupRef newWsGroupRef(@Nullable Long id, @Nullable String name) {
-    return new WsGroupRef(id, name);
+  public GroupIdOrAnyone(GroupDto group) {
+    this.id = requireNonNull(group.getId());
+    this.organizationUuid = requireNonNull(group.getOrganizationUuid());
+  }
+
+  public boolean isAnyone() {
+    return id == null;
   }
 
   @CheckForNull
-  public Long id() {
-    return this.id;
+  public Long getId() {
+    return id;
   }
 
-  @CheckForNull
-  public String name() {
-    return this.name;
+  public String getOrganizationUuid() {
+    return organizationUuid;
+  }
+
+  public static GroupIdOrAnyone from(GroupDto dto) {
+    return new GroupIdOrAnyone(dto.getOrganizationUuid(), dto.getId());
+  }
+
+  public static GroupIdOrAnyone forAnyone(String organizationUuid) {
+    return new GroupIdOrAnyone(organizationUuid, null);
   }
 }

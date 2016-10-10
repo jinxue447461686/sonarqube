@@ -73,15 +73,14 @@ public class DeleteAction implements UserGroupsWsAction {
 
     DbSession dbSession = dbClient.openSession(false);
     try {
-      GroupDto group = support.findGroup(dbSession, request);
-      long groupId = group.getId();
+      GroupId groupId = support.findGroup(dbSession, request);
 
       checkNotTryingToDeleteDefaultGroup(dbSession, groupId);
-      checkNotTryingToDeleteLastSystemAdminGroup(dbSession, group.getName());
+      checkNotTryingToDeleteLastSystemAdminGroup(dbSession, groupId);
       removeGroupMembers(dbSession, groupId);
       removeGroupPermissions(dbSession, groupId);
       removeFromPermissionTemplates(dbSession, groupId);
-      dbClient.groupDao().deleteById(dbSession, groupId);
+      dbClient.groupDao().deleteById(dbSession, groupId.getId());
 
       dbSession.commit();
       response.noContent();
@@ -90,34 +89,36 @@ public class DeleteAction implements UserGroupsWsAction {
     }
   }
 
-  private void checkNotTryingToDeleteDefaultGroup(DbSession dbSession, long groupId) {
+  private void checkNotTryingToDeleteDefaultGroup(DbSession dbSession, GroupId group) {
+    // TODO support organizations
     String defaultGroupName = settings.getString(CoreProperties.CORE_DEFAULT_GROUP);
     GroupDto defaultGroup = dbClient.groupDao().selectOrFailByName(dbSession, defaultGroupName);
-    checkArgument(groupId != defaultGroup.getId(),
+    checkArgument(group.getId() != defaultGroup.getId().longValue(),
       format("Default group '%s' cannot be deleted", defaultGroupName));
   }
 
-  private void checkNotTryingToDeleteLastSystemAdminGroup(DbSession dbSession, String groupName) {
-    boolean hasAdminPermission = dbClient.roleDao()
-      .selectGroupPermissions(dbSession, groupName, null)
+  private void checkNotTryingToDeleteLastSystemAdminGroup(DbSession dbSession, GroupId group) {
+    boolean hasAdminPermission = dbClient.groupPermissionDao()
+      .selectGroupPermissions(dbSession, group.getId(), null)
       .contains(GlobalPermissions.SYSTEM_ADMIN);
+    // TODO support organizations
     boolean isOneRemainingAdminGroup = dbClient.groupPermissionDao().countGroups(dbSession, GlobalPermissions.SYSTEM_ADMIN, null) == 1;
     boolean hasNoStandaloneAdminUser = dbClient.userPermissionDao().countUsers(dbSession,
       PermissionQuery.builder().setPermission(GlobalPermissions.SYSTEM_ADMIN).withAtLeastOnePermission().build()) == 0;
     boolean isLastAdminGroup = hasAdminPermission && isOneRemainingAdminGroup && hasNoStandaloneAdminUser;
 
-    checkArgument(!isLastAdminGroup, "The last system admin group '%s' cannot be deleted", groupName);
+    checkArgument(!isLastAdminGroup, "The last system admin group cannot be deleted");
   }
 
-  private void removeGroupMembers(DbSession dbSession, long groupId) {
-    dbClient.userGroupDao().deleteMembersByGroupId(dbSession, groupId);
+  private void removeGroupMembers(DbSession dbSession, GroupId groupId) {
+    dbClient.userGroupDao().deleteByGroupId(dbSession, groupId.getId());
   }
 
-  private void removeGroupPermissions(DbSession dbSession, long groupId) {
-    dbClient.roleDao().deleteGroupRolesByGroupId(dbSession, groupId);
+  private void removeGroupPermissions(DbSession dbSession, GroupId groupId) {
+    dbClient.roleDao().deleteGroupRolesByGroupId(dbSession, groupId.getId());
   }
 
-  private void removeFromPermissionTemplates(DbSession dbSession, long groupId) {
-    dbClient.permissionTemplateDao().deleteByGroup(dbSession, groupId);
+  private void removeFromPermissionTemplates(DbSession dbSession, GroupId groupId) {
+    dbClient.permissionTemplateDao().deleteByGroup(dbSession, groupId.getId());
   }
 }

@@ -26,12 +26,10 @@ import org.sonar.api.server.ws.WebService.Param;
 import org.sonar.api.server.ws.WebService.SelectionMode;
 import org.sonar.api.utils.System2;
 import org.sonar.core.permission.GlobalPermissions;
-import org.sonar.db.DbClient;
-import org.sonar.db.DbSession;
 import org.sonar.db.DbTester;
 import org.sonar.db.user.GroupDto;
+import org.sonar.db.user.UserDbTester;
 import org.sonar.db.user.UserDto;
-import org.sonar.db.user.UserGroupDto;
 import org.sonar.server.exceptions.ForbiddenException;
 import org.sonar.server.exceptions.NotFoundException;
 import org.sonar.server.organization.DefaultOrganizationProviderRule;
@@ -40,7 +38,7 @@ import org.sonar.server.ws.WsTester;
 import org.sonar.server.ws.WsTester.TestRequest;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.sonar.db.user.GroupTesting.newGroupDto;
+import static org.sonar.db.user.UserTesting.newUserDto;
 import static org.sonar.server.usergroups.ws.GroupWsSupport.PARAM_GROUP_NAME;
 
 public class UsersActionTest {
@@ -49,21 +47,16 @@ public class UsersActionTest {
   public DbTester db = DbTester.create(System2.INSTANCE);
   @Rule
   public UserSessionRule userSession = UserSessionRule.standalone();
-  @Rule
-  public DefaultOrganizationProviderRule defaultOrganizationProvider = DefaultOrganizationProviderRule.create(db);
-
-  WsTester wsTester;
-  DbClient dbClient;
-  DbSession dbSession;
+  private DefaultOrganizationProviderRule defaultOrganizationProvider = DefaultOrganizationProviderRule.create(db);
+  private UserDbTester userTester = new UserDbTester(db);
+  private WsTester wsTester;
 
   @Before
   public void setUp() {
-    dbClient = db.getDbClient();
-    dbSession = db.getSession();
     GroupWsSupport groupSupport = new GroupWsSupport(db.getDbClient(), defaultOrganizationProvider);
     wsTester = new WsTester(new UserGroupsWs(
       new UsersAction(
-        dbClient,
+        db.getDbClient(),
         userSession,
         groupSupport)));
     userSession.login("admin").setGlobalPermissions(GlobalPermissions.SYSTEM_ADMIN);
@@ -71,14 +64,14 @@ public class UsersActionTest {
   }
 
   @Test(expected = NotFoundException.class)
-  public void fail_on_unknown_user() throws Exception {
+  public void fail_if_unknown_user() throws Exception {
     newUsersRequest()
       .setParam("id", "42")
       .setParam("login", "john").execute();
   }
 
   @Test(expected = ForbiddenException.class)
-  public void fail_on_missing_permission() throws Exception {
+  public void fail_if_missing_permission() throws Exception {
     userSession.login("not-admin");
     newUsersRequest()
       .setParam("id", "42")
@@ -87,8 +80,7 @@ public class UsersActionTest {
 
   @Test
   public void empty_users() throws Exception {
-    GroupDto group = insertGroup();
-    dbSession.commit();
+    GroupDto group = userTester.insertGroup(defaultOrganizationProvider.getDto(), "a group");
 
     newUsersRequest()
       .setParam("login", "john")
@@ -99,11 +91,10 @@ public class UsersActionTest {
 
   @Test
   public void all_users() throws Exception {
-    GroupDto group = insertGroup();
-    UserDto user = insertUser("ada", "Ada Lovelace");
-    addUserToGroup(user, group);
-    insertUser("grace", "Grace Hopper");
-    dbSession.commit();
+    GroupDto group = userTester.insertGroup(defaultOrganizationProvider.getDto(), "a group");
+    UserDto user1 = userTester.insertUser(newUserDto().setLogin("ada").setName("Ada Lovelace"));
+    userTester.insertMember(group, user1);
+    userTester.insertUser(newUserDto().setLogin("grace").setName("Grace Hopper"));
 
     newUsersRequest()
       .setParam("id", group.getId().toString())
@@ -114,12 +105,11 @@ public class UsersActionTest {
 
   @Test
   public void all_users_by_group_name() throws Exception {
-    GroupDto group = insertGroup();
-    UserDto adaLovelace = insertUser("ada", "Ada Lovelace");
-    UserDto graceHopper = insertUser("grace", "Grace Hopper");
-    addUserToGroup(adaLovelace, group);
-    addUserToGroup(graceHopper, group);
-    dbSession.commit();
+    GroupDto group = userTester.insertGroup(defaultOrganizationProvider.getDto(), "a group");
+    UserDto adaLovelace = userTester.insertUser(newUserDto().setLogin("ada").setName("Ada Lovelace"));
+    UserDto graceHopper = userTester.insertUser(newUserDto().setLogin("grace").setName("Grace Hopper"));
+    userTester.insertMember(group, adaLovelace);
+    userTester.insertMember(group, graceHopper);
 
     String response = newUsersRequest()
       .setParam(PARAM_GROUP_NAME, group.getName())
@@ -130,11 +120,10 @@ public class UsersActionTest {
 
   @Test
   public void selected_users() throws Exception {
-    GroupDto group = insertGroup();
-    UserDto groupUser = insertUser("ada", "Ada Lovelace");
-    insertUser("grace", "Grace Hopper");
-    addUserToGroup(groupUser, group);
-    dbSession.commit();
+    GroupDto group = userTester.insertGroup(defaultOrganizationProvider.getDto(), "a group");
+    UserDto user1 = userTester.insertUser(newUserDto().setLogin("ada").setName("Ada Lovelace"));
+    userTester.insertUser(newUserDto().setLogin("grace").setName("Grace Hopper"));
+    userTester.insertMember(group, user1);
 
     newUsersRequest()
       .setParam("id", group.getId().toString())
@@ -150,11 +139,10 @@ public class UsersActionTest {
 
   @Test
   public void deselected_users() throws Exception {
-    GroupDto group = insertGroup();
-    UserDto groupUser = insertUser("ada", "Ada Lovelace");
-    insertUser("grace", "Grace Hopper");
-    addUserToGroup(groupUser, group);
-    dbSession.commit();
+    GroupDto group = userTester.insertGroup(defaultOrganizationProvider.getDto(), "a group");
+    UserDto user1 = userTester.insertUser(newUserDto().setLogin("ada").setName("Ada Lovelace"));
+    userTester.insertUser(newUserDto().setLogin("grace").setName("Grace Hopper"));
+    userTester.insertMember(group, user1);
 
     newUsersRequest()
       .setParam("id", group.getId().toString())
@@ -165,11 +153,10 @@ public class UsersActionTest {
 
   @Test
   public void paging() throws Exception {
-    GroupDto group = insertGroup();
-    UserDto groupUser = insertUser("ada", "Ada Lovelace");
-    insertUser("grace", "Grace Hopper");
-    addUserToGroup(groupUser, group);
-    dbSession.commit();
+    GroupDto group = userTester.insertGroup(defaultOrganizationProvider.getDto(), "a group");
+    UserDto user1 = userTester.insertUser(newUserDto().setLogin("ada").setName("Ada Lovelace"));
+    userTester.insertUser(newUserDto().setLogin("grace").setName("Grace Hopper"));
+    userTester.insertMember(group, user1);
 
     newUsersRequest()
       .setParam("id", group.getId().toString())
@@ -189,11 +176,10 @@ public class UsersActionTest {
 
   @Test
   public void filtering() throws Exception {
-    GroupDto group = insertGroup();
-    UserDto groupUser = insertUser("ada", "Ada Lovelace");
-    insertUser("grace", "Grace Hopper");
-    addUserToGroup(groupUser, group);
-    dbSession.commit();
+    GroupDto group = userTester.insertGroup(defaultOrganizationProvider.getDto(), "a group");
+    UserDto user1 = userTester.insertUser(newUserDto().setLogin("ada").setName("Ada Lovelace"));
+    userTester.insertUser(newUserDto().setLogin("grace").setName("Grace Hopper"));
+    userTester.insertMember(group, user1);
 
     newUsersRequest()
       .setParam("id", group.getId().toString())
@@ -213,16 +199,4 @@ public class UsersActionTest {
     return wsTester.newGetRequest("api/user_groups", "users");
   }
 
-  private GroupDto insertGroup() {
-    GroupDto group = newGroupDto().setName("sonar-users").setOrganizationUuid(defaultOrganizationProvider.get().getUuid());
-    return dbClient.groupDao().insert(dbSession, group);
-  }
-
-  private UserDto insertUser(String login, String name) {
-    return dbClient.userDao().insert(dbSession, new UserDto().setLogin(login).setName(name));
-  }
-
-  private void addUserToGroup(UserDto user, GroupDto usersGroup) {
-    dbClient.userGroupDao().insert(dbSession, new UserGroupDto().setUserId(user.getId()).setGroupId(usersGroup.getId()));
-  }
 }

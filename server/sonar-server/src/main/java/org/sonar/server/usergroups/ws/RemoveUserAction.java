@@ -26,9 +26,7 @@ import org.sonar.api.server.ws.WebService.NewController;
 import org.sonar.core.permission.GlobalPermissions;
 import org.sonar.db.DbClient;
 import org.sonar.db.DbSession;
-import org.sonar.db.user.GroupDto;
 import org.sonar.db.user.UserDto;
-import org.sonar.db.user.UserGroupDto;
 import org.sonar.server.user.UserSession;
 
 import static java.lang.String.format;
@@ -70,13 +68,12 @@ public class RemoveUserAction implements UserGroupsWsAction {
 
     DbSession dbSession = dbClient.openSession(false);
     try {
-      GroupDto group = support.findGroup(dbSession, request);
+      GroupId group = support.findGroup(dbSession, request);
 
       String login = request.mandatoryParam(PARAM_LOGIN);
       UserDto user = getUser(dbSession, login);
 
-      UserGroupDto membershipDto = new UserGroupDto().setGroupId(group.getId()).setUserId(user.getId());
-      dbClient.userGroupDao().delete(dbSession, membershipDto);
+      dbClient.userGroupDao().delete(dbSession, group.getId(), user.getId());
       dbSession.commit();
 
       response.noContent();

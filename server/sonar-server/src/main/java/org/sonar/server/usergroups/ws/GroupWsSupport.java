@@ -36,9 +36,9 @@ import org.sonarqube.ws.WsUserGroups;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static java.lang.String.format;
-import static org.sonar.api.security.DefaultGroups.isAnyone;
 import static org.sonar.server.ws.WsUtils.checkFound;
 import static org.sonar.server.ws.WsUtils.checkFoundWithOptional;
+import static org.sonar.server.ws.WsUtils.checkRequest;
 
 public class GroupWsSupport {
 
@@ -66,26 +66,14 @@ public class GroupWsSupport {
    * (parameters {@link #PARAM_ORGANIZATION_KEY} and {@link #PARAM_GROUP_NAME}). The virtual
    * group "Anyone" is not supported.
    *
-   * @throws NotFoundException if parameters are missing/incorrect or if the requested group does not exist.
+   * @throws NotFoundException if parameters are missing/incorrect, if the requested group does not exist
+   * or if the virtual group "Anyone" is requested.
    */
-  public GroupDto findGroup(DbSession dbSession, Request request) {
-    return findGroup(dbSession, newGroupRef(dbSession, request));
-  }
-
-  /**
-   * Find a group by its id or couple organization key/group name. In the latter case, if the
-   * group name is "Anyone" (case-insensitive) then {@code null} is returned.
-   *
-   * @return the requested group, {@code null} if Anyone
-   * @throws NotFoundException if parameters are missing or if the requested group does not exist.
-   */
-  @CheckForNull
-  public GroupDto findGroupOrAnyone(DbSession dbSession, Request request) {
-    GroupRef ref = newGroupRef(dbSession, request);
-    if (!ref.hasId() && isAnyone(ref.getName())) {
-      return null;
-    }
-    return findGroup(dbSession, ref);
+  public GroupId findGroup(DbSession dbSession, Request request) {
+    Long id = request.paramAsLong(PARAM_GROUP_ID);
+    String organizationKey = request.param(PARAM_ORGANIZATION_KEY);
+    String name = request.param(PARAM_GROUP_NAME);
+    return findGroup(dbSession, newGroupRef(dbSession, id, organizationKey, name));
   }
 
   /**
@@ -94,33 +82,51 @@ public class GroupWsSupport {
    *
    * @return non-null group
    * @throws NotFoundException if the requested group does not exist
+   * @throws NotFoundException if the requested group is Anyone
    */
-  private GroupDto findGroup(DbSession dbSession, GroupRef ref) {
+  public GroupId findGroup(DbSession dbSession, GroupWsRef ref) {
     if (ref.hasId()) {
       GroupDto group = dbClient.groupDao().selectById(dbSession, ref.getId());
-      return checkFound(group, "No group with id '%s'", ref.getId());
+      checkFound(group, "No group with id '%s'", ref.getId());
+      return GroupId.from(group);
     }
 
     Optional<GroupDto> group = dbClient.groupDao().selectByName(dbSession, ref.getOrganizationUuid(), ref.getName());
-    return checkFoundWithOptional(group, "No group with name '%s'", ref.getName(), ref.getOrganizationUuid());
+    checkFoundWithOptional(group, "No group with name '%s'", ref.getName(), ref.getOrganizationUuid());
+    return GroupId.from(group.get());
   }
 
-  private GroupRef newGroupRef(DbSession dbSession, Request request) {
-    Long id = request.paramAsLong(PARAM_GROUP_ID);
-    String organizationKey = request.param(PARAM_ORGANIZATION_KEY);
-    String name = request.param(PARAM_GROUP_NAME);
-
-    if (id != null) {
-      checkArgument(organizationKey == null && name == null, "Either id or couple organizationKey/name must be set");
-      return GroupRef.fromId(id);
+  public GroupIdOrAnyone findGroupOrAnyone(DbSession dbSession, GroupWsRef ref) {
+    if (ref.hasId()) {
+      GroupDto group = dbClient.groupDao().selectById(dbSession, ref.getId());
+      checkFound(group, "No group with id '%s'", ref.getId());
+      return GroupIdOrAnyone.from(group);
     }
+
+    if (ref.isAnyone()) {
+      return GroupIdOrAnyone.forAnyone(ref.getOrganizationUuid());
+    }
+
+    Optional<GroupDto> group = dbClient.groupDao().selectByName(dbSession, ref.getOrganizationUuid(), ref.getName());
+    checkFoundWithOptional(group, "No group with name '%s'", ref.getName(), ref.getOrganizationUuid());
+    return GroupIdOrAnyone.from(group.get());
+  }
+
+  public GroupWsRef newGroupRef(DbSession dbSession, @Nullable Long id, @Nullable String organizationKey, @Nullable String name) {
+    if (id != null) {
+      checkRequest(organizationKey == null && name == null, "Either group id or couple organizationKey/group name must be set");
+      return GroupWsRef.fromId(id);
+    }
+
+    checkRequest(name != null, "Group name or group id must be provided");
+
     String organizationUuid;
     if (organizationKey == null) {
       organizationUuid = defaultOrganizationProvider.get().getUuid();
     } else {
       organizationUuid = findOrganizationByKey(dbSession, organizationKey).getUuid();
     }
-    return GroupRef.fromName(organizationUuid, name);
+    return GroupWsRef.fromName(organizationUuid, name);
   }
 
   /**
@@ -161,7 +167,7 @@ public class GroupWsSupport {
     }
   }
 
-  WsUserGroups.Group.Builder toProtobuf(OrganizationDto organization, GroupDto group, int membersCount) {
+  static WsUserGroups.Group.Builder toProtobuf(OrganizationDto organization, GroupDto group, int membersCount) {
     WsUserGroups.Group.Builder wsGroup = WsUserGroups.Group.newBuilder()
       .setId(group.getId())
       .setOrganizationKey(organization.getKey())

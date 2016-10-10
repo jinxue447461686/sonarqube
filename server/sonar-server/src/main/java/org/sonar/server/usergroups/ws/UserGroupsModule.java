@@ -28,7 +28,6 @@ public class UserGroupsModule extends Module {
     add(
       UserGroupsWs.class,
       GroupWsSupport.class,
-      UserGroupFinder.class,
       // actions
       SearchAction.class,
       CreateAction.class,

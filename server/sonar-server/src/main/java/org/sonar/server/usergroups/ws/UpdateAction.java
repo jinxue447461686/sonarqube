@@ -93,7 +93,7 @@ public class UpdateAction implements UserGroupsWsAction {
 
     DbSession dbSession = dbClient.openSession(false);
     try {
-      Long groupId = request.mandatoryParamAsLong(PARAM_GROUP_ID);
+      long groupId = request.mandatoryParamAsLong(PARAM_GROUP_ID);
       GroupDto group = dbClient.groupDao().selectById(dbSession, groupId);
       checkFound(group, "Could not find a user group with id '%s'.", groupId);
       Optional<OrganizationDto> org = dbClient.organizationDao().selectByUuid(dbSession, group.getOrganizationUuid());

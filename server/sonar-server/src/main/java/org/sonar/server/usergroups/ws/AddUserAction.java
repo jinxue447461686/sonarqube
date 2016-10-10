@@ -26,14 +26,12 @@ import org.sonar.api.server.ws.WebService.NewController;
 import org.sonar.core.permission.GlobalPermissions;
 import org.sonar.db.DbClient;
 import org.sonar.db.DbSession;
-import org.sonar.db.user.GroupDto;
 import org.sonar.db.user.UserDto;
 import org.sonar.db.user.UserGroupDto;
 import org.sonar.server.exceptions.NotFoundException;
 import org.sonar.server.user.UserSession;
 
 import static java.lang.String.format;
-import static java.util.Arrays.asList;
 import static org.sonar.db.MyBatis.closeQuietly;
 import static org.sonar.server.usergroups.ws.GroupWsSupport.PARAM_GROUP_ID;
 import static org.sonar.server.usergroups.ws.GroupWsSupport.PARAM_GROUP_NAME;
@@ -72,7 +70,7 @@ public class AddUserAction implements UserGroupsWsAction {
 
     DbSession dbSession = dbClient.openSession(false);
     try {
-      GroupDto group = support.findGroup(dbSession, request);
+      GroupId groupId = support.findGroup(dbSession, request);
 
       String login = request.mandatoryParam(PARAM_LOGIN);
       UserDto user = dbClient.userDao().selectActiveUserByLogin(dbSession, login);
@@ -80,8 +78,8 @@ public class AddUserAction implements UserGroupsWsAction {
         throw new NotFoundException(format("Could not find a user with login '%s'", login));
       }
 
-      if (userIsNotYetMemberOf(dbSession, login, group)) {
-        UserGroupDto membershipDto = new UserGroupDto().setGroupId(group.getId()).setUserId(user.getId());
+      if (userIsNotYetMemberOf(dbSession, user.getId(), groupId)) {
+        UserGroupDto membershipDto = new UserGroupDto().setGroupId(groupId.getId()).setUserId(user.getId());
         dbClient.userGroupDao().insert(dbSession, membershipDto);
         dbSession.commit();
       }
@@ -90,10 +88,9 @@ public class AddUserAction implements UserGroupsWsAction {
     } finally {
       closeQuietly(dbSession);
     }
-
   }
 
-  private boolean userIsNotYetMemberOf(DbSession dbSession, String login, GroupDto group) {
-    return !dbClient.groupMembershipDao().selectGroupsByLogins(dbSession, asList(login)).get(login).contains(group.getName());
+  private boolean userIsNotYetMemberOf(DbSession dbSession, long userId, GroupId groupId) {
+    return !dbClient.groupMembershipDao().selectGroupIdsByUserId(dbSession, userId).contains(groupId.getId());
   }
 }

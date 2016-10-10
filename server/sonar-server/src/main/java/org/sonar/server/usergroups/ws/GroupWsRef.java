@@ -21,13 +21,15 @@ package org.sonar.server.usergroups.ws;
 
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.Immutable;
+import org.sonar.api.security.DefaultGroups;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static java.util.Objects.requireNonNull;
+import static org.sonar.server.ws.WsUtils.checkRequest;
 
 @Immutable
-public class GroupRef {
+public class GroupWsRef {
 
   private static final int NULL_ID = -1;
 
@@ -35,7 +37,7 @@ public class GroupRef {
   private final String organizationUuid;
   private final String name;
 
-  private GroupRef(long id, @Nullable String organizationUuid, @Nullable String name) {
+  private GroupWsRef(long id, @Nullable String organizationUuid, @Nullable String name) {
     this.id = id;
     this.organizationUuid = organizationUuid;
     this.name = name;
@@ -69,7 +71,7 @@ public class GroupRef {
   }
 
   /**
-   * @return the non-null group name.
+   * @return the non-null group name. Can be anyone.
    * @throws IllegalStateException if {@link #getId()} is {@code true}
    */
   public String getName() {
@@ -78,19 +80,23 @@ public class GroupRef {
   }
 
   /**
-   * @return a new {@link GroupRef} referencing a group by its id
+   * @return a new {@link GroupWsRef} referencing a group by its id
    */
-  public static GroupRef fromId(long id) {
+  public static GroupWsRef fromId(long id) {
     checkArgument(id > NULL_ID, "Group id must be positive: %s", id);
-    return new GroupRef(id, null, null);
+    return new GroupWsRef(id, null, null);
   }
 
   /**
    * @param organizationUuid non-null UUID of organization
-   * @param name non-null name
+   * @param name non-null name. Can be "anyone"
    */
-  public static GroupRef fromName(String organizationUuid, String name) {
-    return new GroupRef(NULL_ID, requireNonNull(organizationUuid), requireNonNull(name));
+  public static GroupWsRef fromName(String organizationUuid, String name) {
+    return new GroupWsRef(NULL_ID, requireNonNull(organizationUuid), requireNonNull(name));
+  }
+
+  public boolean isAnyone() {
+    return !hasId() && DefaultGroups.isAnyone(name);
   }
 
   @Override
@@ -101,7 +107,7 @@ public class GroupRef {
     if (o == null || getClass() != o.getClass()) {
       return false;
     }
-    GroupRef groupRef = (GroupRef) o;
+    GroupWsRef groupRef = (GroupWsRef) o;
     if (id != groupRef.id) {
       return false;
     }
@@ -121,7 +127,7 @@ public class GroupRef {
 
   @Override
   public String toString() {
-    StringBuilder sb = new StringBuilder("GroupRef{");
+    StringBuilder sb = new StringBuilder("GroupWsRef{");
     sb.append("id=").append(id);
     sb.append(", organizationUuid='").append(organizationUuid).append('\'');
     sb.append(", name='").append(name).append('\'');

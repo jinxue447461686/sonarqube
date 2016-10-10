@@ -38,6 +38,7 @@ import static org.sonar.server.usergroups.ws.GroupWsSupport.DESCRIPTION_MAX_LENG
 import static org.sonar.server.usergroups.ws.GroupWsSupport.PARAM_GROUP_DESCRIPTION;
 import static org.sonar.server.usergroups.ws.GroupWsSupport.PARAM_GROUP_NAME;
 import static org.sonar.server.usergroups.ws.GroupWsSupport.PARAM_ORGANIZATION_KEY;
+import static org.sonar.server.usergroups.ws.GroupWsSupport.toProtobuf;
 import static org.sonar.server.ws.WsUtils.writeProtobuf;
 
 public class CreateAction implements UserGroupsWsAction {
@@ -106,7 +107,7 @@ public class CreateAction implements UserGroupsWsAction {
 
   private void writeResponse(Request request, Response response, OrganizationDto organization, GroupDto group) {
     WsUserGroups.CreateResponse.Builder respBuilder = WsUserGroups.CreateResponse.newBuilder();
-    respBuilder.setGroup(support.toProtobuf(organization, group, 0));
+    respBuilder.setGroup(toProtobuf(organization, group, 0));
     writeProtobuf(respBuilder.build(), request, response);
   }
 }

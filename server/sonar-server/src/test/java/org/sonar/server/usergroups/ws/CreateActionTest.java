@@ -26,23 +26,22 @@ import org.junit.Test;
 import org.junit.rules.ExpectedException;
 import org.sonar.api.utils.System2;
 import org.sonar.core.permission.GlobalPermissions;
-import org.sonar.db.DbSession;
 import org.sonar.db.DbTester;
+import org.sonar.db.organization.OrganizationDto;
 import org.sonar.db.organization.OrganizationTesting;
 import org.sonar.db.user.GroupDto;
-import org.sonar.db.user.GroupTesting;
+import org.sonar.db.user.UserDbTester;
 import org.sonar.server.exceptions.ForbiddenException;
 import org.sonar.server.exceptions.ServerException;
+import org.sonar.server.organization.DefaultOrganization;
 import org.sonar.server.organization.DefaultOrganizationProviderRule;
 import org.sonar.server.tester.UserSessionRule;
 import org.sonar.server.ws.WsTester;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.sonar.db.organization.OrganizationTesting.newOrganizationDto;
 
-
 public class CreateActionTest {
-
-  private static final String AN_ORGANIZATION_KEY = "an-org";
 
   @Rule
   public DbTester db = DbTester.create(System2.INSTANCE);
@@ -50,57 +49,64 @@ public class CreateActionTest {
   public UserSessionRule userSession = UserSessionRule.standalone();
   @Rule
   public ExpectedException expectedException = ExpectedException.none();
-  @Rule
-  public DefaultOrganizationProviderRule defaultOrganizationProvider = DefaultOrganizationProviderRule.create(db);
+
+  private UserDbTester tester = new UserDbTester(db);
+  private DefaultOrganizationProviderRule defaultOrganizationProvider = DefaultOrganizationProviderRule.create(db);
   private WsTester ws;
-  private DbSession dbSession;
 
   @Before
   public void setUp() {
-    dbSession = db.getSession();
-
-    GroupWsSupport groupSupport = new GroupWsSupport(db.getDbClient(), defaultOrganizationProvider);
-    ws = new WsTester(new UserGroupsWs(new CreateAction(db.getDbClient(), userSession, groupSupport)));
+    ws = new WsTester(new UserGroupsWs(new CreateAction(db.getDbClient(), userSession, newGroupWsSupport())));
   }
 
   @Test
   public void create_group_on_default_organization() throws Exception {
     loginAsAdmin();
+
     newRequest()
       .setParam("name", "some-product-bu")
       .setParam("description", "Business Unit for Some Awesome Product")
-      .execute().assertJson("{" +
+      .execute()
+      .assertJson("{" +
         "  \"group\": {" +
-        "    \"organizationKey\": \"" + defaultOrganizationProvider.get().getKey() + "\"," +
+        "    \"organizationKey\": \"" + getDefaultOrganization().getKey() + "\"," +
         "    \"name\": \"some-product-bu\"," +
         "    \"description\": \"Business Unit for Some Awesome Product\"," +
         "    \"membersCount\": 0" +
         "  }" +
         "}");
+
+    assertThat(tester.selectGroup(defaultOrganizationProvider.getDto(), "some-product-bu")).isPresent();
   }
 
   @Test
   public void create_group_on_specific_organization() throws Exception {
-    OrganizationTesting.insert(db, newOrganizationDto().setKey(AN_ORGANIZATION_KEY));
+    OrganizationDto org = OrganizationTesting.insert(db, newOrganizationDto());
 
     loginAsAdmin();
     newRequest()
-      .setParam("organizationKey", AN_ORGANIZATION_KEY)
+      .setParam("organizationKey", org.getKey())
       .setParam("name", "some-product-bu")
       .setParam("description", "Business Unit for Some Awesome Product")
-      .execute().assertJson("{" +
-      "  \"group\": {" +
-      "    \"organizationKey\": \"" + AN_ORGANIZATION_KEY + "\"," +
-      "    \"name\": \"some-product-bu\"," +
-      "    \"description\": \"Business Unit for Some Awesome Product\"," +
-      "    \"membersCount\": 0" +
-      "  }" +
-      "}");
+      .execute()
+      .assertJson("{" +
+        "  \"group\": {" +
+        "    \"organizationKey\": \"" + org.getKey() + "\"," +
+        "    \"name\": \"some-product-bu\"," +
+        "    \"description\": \"Business Unit for Some Awesome Product\"," +
+        "    \"membersCount\": 0" +
+        "  }" +
+        "}");
+
+    GroupDto createdGroup = tester.selectGroup(org, "some-product-bu").get();
+    assertThat(createdGroup.getId()).isNotNull();
+    assertThat(createdGroup.getOrganizationUuid()).isEqualTo(org.getUuid());
   }
 
   @Test(expected = ForbiddenException.class)
   public void require_admin_permission() throws Exception {
     userSession.login("not-admin");
+
     newRequest()
       .setParam("name", "some-product-bu")
       .setParam("description", "Business Unit for Some Awesome Product")
@@ -108,7 +114,7 @@ public class CreateActionTest {
   }
 
   @Test(expected = IllegalArgumentException.class)
-  public void name_too_short() throws Exception {
+  public void fail_if_name_is_too_short() throws Exception {
     loginAsAdmin();
     newRequest()
       .setParam("name", "")
@@ -116,7 +122,7 @@ public class CreateActionTest {
   }
 
   @Test(expected = IllegalArgumentException.class)
-  public void name_too_long() throws Exception {
+  public void fail_if_name_is_too_long() throws Exception {
     loginAsAdmin();
     newRequest()
       .setParam("name", StringUtils.repeat("a", 255 + 1))
@@ -124,7 +130,7 @@ public class CreateActionTest {
   }
 
   @Test(expected = IllegalArgumentException.class)
-  public void forbidden_name() throws Exception {
+  public void fail_if_name_is_anyone() throws Exception {
     loginAsAdmin();
     newRequest()
       .setParam("name", "AnYoNe")
@@ -132,10 +138,8 @@ public class CreateActionTest {
   }
 
   @Test
-  public void fail_if_name_already_exists_in_the_organization() throws Exception {
-    GroupDto group = GroupTesting.newGroupDto().setName("conflicting-name").setOrganizationUuid(defaultOrganizationProvider.get().getUuid());
-    db.getDbClient().groupDao().insert(dbSession, group);
-    db.commit();
+  public void fail_if_group_with_same_name_already_exists() throws Exception {
+    GroupDto group = tester.insertGroup(defaultOrganizationProvider.getDto(), "the-group");
 
     expectedException.expect(ServerException.class);
     expectedException.expectMessage("Group '" + group.getName() + "' already exists");
@@ -146,8 +150,46 @@ public class CreateActionTest {
       .execute();
   }
 
+  @Test
+  public void fail_if_group_with_same_name_already_exists_in_the_organization() throws Exception {
+    OrganizationDto org = OrganizationTesting.insert(db, newOrganizationDto());
+    GroupDto group = tester.insertGroup(org, "the-group");
+
+    expectedException.expect(ServerException.class);
+    expectedException.expectMessage("Group '" + group.getName() + "' already exists");
+
+    loginAsAdmin();
+    newRequest()
+      .setParam("organizationKey", org.getKey())
+      .setParam("name", group.getName())
+      .execute();
+  }
+
+  @Test
+  public void add_group_with_a_name_that_already_exists_in_another_organization() throws Exception {
+    String name = "the-group";
+    OrganizationDto org1 = OrganizationTesting.insert(db, newOrganizationDto());
+    OrganizationDto org2 = OrganizationTesting.insert(db, newOrganizationDto());
+    GroupDto group = tester.insertGroup(org1, name);
+
+    loginAsAdmin();
+    newRequest()
+      .setParam("organizationKey", org2.getKey())
+      .setParam("name", name)
+      .execute()
+      .assertJson("{" +
+        "  \"group\": {" +
+        "    \"organizationKey\": \"" + org2.getKey() + "\"," +
+        "    \"name\": \"" + group.getName() + "\"," +
+        "  }" +
+        "}");
+
+    assertThat(tester.selectGroups(org1)).extracting(GroupDto::getName).containsOnly(name);
+    assertThat(tester.selectGroups(org2)).extracting(GroupDto::getName).containsOnly(name);
+  }
+
   @Test(expected = IllegalArgumentException.class)
-  public void description_too_long() throws Exception {
+  public void fail_if_description_is_too_long() throws Exception {
     loginAsAdmin();
     newRequest()
       .setParam("name", "long-desc")
@@ -163,4 +205,11 @@ public class CreateActionTest {
     userSession.login("admin").setGlobalPermissions(GlobalPermissions.SYSTEM_ADMIN);
   }
 
+  private GroupWsSupport newGroupWsSupport() {
+    return new GroupWsSupport(db.getDbClient(), defaultOrganizationProvider);
+  }
+
+  private DefaultOrganization getDefaultOrganization() {
+    return defaultOrganizationProvider.get();
+  }
 }
