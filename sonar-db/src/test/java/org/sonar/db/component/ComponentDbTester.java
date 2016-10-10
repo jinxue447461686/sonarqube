@@ -22,7 +22,6 @@ package org.sonar.db.component;
 import java.util.List;
 import org.sonar.api.resources.Qualifiers;
 import org.sonar.db.DbClient;
-import org.sonar.db.DbSession;
 import org.sonar.db.DbTester;
 
 import static java.util.Arrays.asList;
@@ -32,54 +31,52 @@ import static org.sonar.db.component.SnapshotTesting.newAnalysis;
 public class ComponentDbTester {
   private final DbTester db;
   private final DbClient dbClient;
-  private final DbSession dbSession;
 
   public ComponentDbTester(DbTester db) {
     this.db = db;
     this.dbClient = db.getDbClient();
-    this.dbSession = db.getSession();
   }
 
   public SnapshotDto insertProjectAndSnapshot(ComponentDto component) {
-    dbClient.componentDao().insert(dbSession, component);
-    SnapshotDto snapshot = dbClient.snapshotDao().insert(dbSession, newAnalysis(component));
+    dbClient.componentDao().insert(db.getSession(), component);
+    SnapshotDto snapshot = dbClient.snapshotDao().insert(db.getSession(), newAnalysis(component));
     db.commit();
 
     return snapshot;
   }
 
   public SnapshotDto insertViewAndSnapshot(ComponentDto component) {
-    dbClient.componentDao().insert(dbSession, component);
-    SnapshotDto snapshot = dbClient.snapshotDao().insert(dbSession, newAnalysis(component));
+    dbClient.componentDao().insert(db.getSession(), component);
+    SnapshotDto snapshot = dbClient.snapshotDao().insert(db.getSession(), newAnalysis(component));
     db.commit();
 
     return snapshot;
   }
 
   public SnapshotDto insertDeveloperAndSnapshot(ComponentDto component) {
-    dbClient.componentDao().insert(dbSession, component);
-    SnapshotDto snapshot = dbClient.snapshotDao().insert(dbSession, newAnalysis(component));
+    dbClient.componentDao().insert(db.getSession(), component);
+    SnapshotDto snapshot = dbClient.snapshotDao().insert(db.getSession(), newAnalysis(component));
     db.commit();
 
     return snapshot;
   }
 
   public ComponentDto insertComponent(ComponentDto component) {
-    dbClient.componentDao().insert(dbSession, component);
+    dbClient.componentDao().insert(db.getSession(), component);
     db.commit();
     return component;
   }
 
   public ComponentDto insertProject() {
     ComponentDto project = newProjectDto();
-    dbClient.componentDao().insert(dbSession, project);
+    dbClient.componentDao().insert(db.getSession(), project);
     db.commit();
 
     return project;
   }
 
   public void insertComponents(ComponentDto... components) {
-    dbClient.componentDao().insert(dbSession, asList(components));
+    dbClient.componentDao().insert(db.getSession(), asList(components));
     db.commit();
   }
 
@@ -87,16 +84,16 @@ public class ComponentDbTester {
     ComponentQuery dbQuery = ComponentQuery.builder()
       .setQualifiers(Qualifiers.PROJECT, Qualifiers.VIEW, "DEV")
       .build();
-    List<ComponentDto> rootProjects = dbClient.componentDao().selectByQuery(dbSession, dbQuery, 0, Integer.MAX_VALUE);
+    List<ComponentDto> rootProjects = dbClient.componentDao().selectByQuery(db.getSession(), dbQuery, 0, Integer.MAX_VALUE);
     for (ComponentDto project : rootProjects) {
-      dbClient.componentIndexDao().indexProject(dbSession, project.uuid());
+      dbClient.componentIndexDao().indexProject(db.getSession(), project.uuid());
     }
     db.commit();
   }
 
   public void indexComponents(String... componentUuids) {
     for (String componentUuid : componentUuids) {
-      dbClient.componentIndexDao().indexResource(dbSession, componentUuid);
+      dbClient.componentIndexDao().indexResource(db.getSession(), componentUuid);
     }
     db.commit();
   }
