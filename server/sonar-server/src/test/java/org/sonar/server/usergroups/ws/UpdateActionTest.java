@@ -28,6 +28,8 @@ import org.sonar.api.utils.System2;
 import org.sonar.core.permission.GlobalPermissions;
 import org.sonar.db.DbSession;
 import org.sonar.db.DbTester;
+import org.sonar.db.organization.OrganizationDto;
+import org.sonar.db.organization.OrganizationTesting;
 import org.sonar.db.user.GroupDto;
 import org.sonar.db.user.UserDbTester;
 import org.sonar.db.user.UserDto;
@@ -45,6 +47,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.sonar.db.organization.OrganizationTesting.newOrganizationDto;
 
 public class UpdateActionTest {
 
@@ -55,7 +58,6 @@ public class UpdateActionTest {
   public DbTester db = DbTester.create(System2.INSTANCE);
   @Rule
   public UserSessionRule userSession = UserSessionRule.standalone();
-
   @Rule
   public ExpectedException expectedException = ExpectedException.none();
 
@@ -67,7 +69,7 @@ public class UpdateActionTest {
   @Before
   public void setUp() throws Exception {
     GroupWsSupport groupSupport = new GroupWsSupport(db.getDbClient(), defaultOrganizationProvider);
-    ws = new WsTester(new UserGroupsWs(new UpdateAction(db.getDbClient(), userSession, groupSupport, settings)));
+    ws = new WsTester(new UserGroupsWs(new UpdateAction(db.getDbClient(), userSession, groupSupport, settings, defaultOrganizationProvider)));
     when(settings.getString(DEFAULT_GROUP_NAME_KEY)).thenReturn(DEFAULT_GROUP_NAME_VALUE);
   }
 
@@ -142,6 +144,22 @@ public class UpdateActionTest {
   public void update_default_group_name_does_not_update_default_group_setting_when_null() throws Exception {
     when(settings.getString(DEFAULT_GROUP_NAME_KEY)).thenReturn(null);
     GroupDto group = userTester.insertGroup(defaultOrganizationProvider.getDto(), DEFAULT_GROUP_NAME_VALUE);
+
+    loginAsAdmin();
+    newRequest()
+      .setParam("id", group.getId().toString())
+      .setParam("name", "new-name")
+      .execute();
+
+    verify(settings, never()).saveProperty(any(DbSession.class), eq(DEFAULT_GROUP_NAME_KEY), eq("new-name"));
+  }
+
+  @Test
+  public void do_not_update_default_group_of_default_organization_if_updating_group_on_non_default_organization() throws Exception {
+    OrganizationDto org = OrganizationTesting.insert(db, newOrganizationDto());
+    when(settings.getString(DEFAULT_GROUP_NAME_KEY)).thenReturn(DEFAULT_GROUP_NAME_VALUE);
+    GroupDto groupInDefaultOrg = userTester.insertGroup(defaultOrganizationProvider.getDto(), DEFAULT_GROUP_NAME_VALUE);
+    GroupDto group = userTester.insertGroup(org, DEFAULT_GROUP_NAME_VALUE);
 
     loginAsAdmin();
     newRequest()

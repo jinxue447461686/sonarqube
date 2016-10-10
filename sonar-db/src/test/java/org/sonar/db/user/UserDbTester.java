@@ -60,6 +60,10 @@ public class UserDbTester {
     return updatedUser;
   }
 
+  public Optional<UserDto> selectUserByLogin(String login) {
+    return Optional.ofNullable(dbClient.userDao().selectByLogin(db.getSession(), login));
+  }
+
   // GROUPS
 
   public GroupDto insertGroup(OrganizationDto organization, String name) {

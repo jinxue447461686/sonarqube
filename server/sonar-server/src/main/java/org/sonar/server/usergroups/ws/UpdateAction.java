@@ -33,6 +33,7 @@ import org.sonar.db.organization.OrganizationDto;
 import org.sonar.db.user.GroupDto;
 import org.sonar.db.user.GroupMembershipQuery;
 import org.sonar.db.user.UserMembershipQuery;
+import org.sonar.server.organization.DefaultOrganizationProvider;
 import org.sonar.server.platform.PersistentSettings;
 import org.sonar.server.user.UserSession;
 import org.sonarqube.ws.WsUserGroups;
@@ -54,12 +55,15 @@ public class UpdateAction implements UserGroupsWsAction {
   private final UserSession userSession;
   private final GroupWsSupport support;
   private final PersistentSettings persistentSettings;
+  private final DefaultOrganizationProvider defaultOrganizationProvider;
 
-  public UpdateAction(DbClient dbClient, UserSession userSession, GroupWsSupport support, PersistentSettings persistentSettings) {
+  public UpdateAction(DbClient dbClient, UserSession userSession, GroupWsSupport support, PersistentSettings persistentSettings,
+    DefaultOrganizationProvider defaultOrganizationProvider) {
     this.dbClient = dbClient;
     this.userSession = userSession;
     this.support = support;
     this.persistentSettings = persistentSettings;
+    this.defaultOrganizationProvider = defaultOrganizationProvider;
   }
 
   @Override
@@ -108,7 +112,7 @@ public class UpdateAction implements UserGroupsWsAction {
 
         String oldName = group.getName();
         group.setName(newName);
-        updateDefaultGroupIfNeeded(dbSession, oldName, newName);
+        updateDefaultGroupIfNeeded(dbSession, org.get(), oldName, newName);
       }
 
       String description = request.param(PARAM_GROUP_DESCRIPTION);
@@ -128,10 +132,14 @@ public class UpdateAction implements UserGroupsWsAction {
     }
   }
 
-  private void updateDefaultGroupIfNeeded(DbSession dbSession, String oldName, String newName) {
-    String defaultGroupName = persistentSettings.getString(CORE_DEFAULT_GROUP);
-    if (Objects.equals(defaultGroupName, oldName)) {
-      persistentSettings.saveProperty(dbSession, CORE_DEFAULT_GROUP, newName);
+  private void updateDefaultGroupIfNeeded(DbSession dbSession, OrganizationDto org, String oldName, String newName) {
+    // The feature "default group" relies on a property. As organization properties are
+    // not implemented yet, default groups are not supported on non-default organizations
+    if (defaultOrganizationProvider.get().getUuid().equals(org.getUuid())) {
+      String defaultGroupName = persistentSettings.getString(CORE_DEFAULT_GROUP);
+      if (Objects.equals(defaultGroupName, oldName)) {
+        persistentSettings.saveProperty(dbSession, CORE_DEFAULT_GROUP, newName);
+      }
     }
   }
 

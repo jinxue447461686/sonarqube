@@ -23,9 +23,8 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.sonar.api.config.Settings;
 import org.sonar.api.config.MapSettings;
-import org.sonar.api.server.ws.WebService;
+import org.sonar.api.config.Settings;
 import org.sonar.api.utils.System2;
 import org.sonar.core.permission.GlobalPermissions;
 import org.sonar.db.DbClient;
@@ -39,13 +38,14 @@ import org.sonar.server.es.EsTester;
 import org.sonar.server.exceptions.BadRequestException;
 import org.sonar.server.exceptions.ForbiddenException;
 import org.sonar.server.exceptions.NotFoundException;
+import org.sonar.server.organization.DefaultOrganizationProvider;
+import org.sonar.server.organization.DefaultOrganizationProviderRule;
 import org.sonar.server.tester.UserSessionRule;
 import org.sonar.server.user.ExternalIdentity;
 import org.sonar.server.user.NewUser;
 import org.sonar.server.user.NewUserNotifier;
 import org.sonar.server.user.SecurityRealmFactory;
 import org.sonar.server.user.UserUpdater;
-import org.sonar.server.user.index.UserIndex;
 import org.sonar.server.user.index.UserIndexDefinition;
 import org.sonar.server.user.index.UserIndexer;
 import org.sonar.server.ws.WsTester;
@@ -57,7 +57,7 @@ import static org.mockito.Mockito.when;
 
 public class ChangePasswordActionTest {
 
-  static final Settings settings = new MapSettings().setProperty("sonar.defaultGroup", "sonar-users");
+  private Settings settings = new MapSettings();
 
   @Rule
   public DbTester dbTester = DbTester.create(System2.INSTANCE);
@@ -68,21 +68,12 @@ public class ChangePasswordActionTest {
   @Rule
   public UserSessionRule userSessionRule = UserSessionRule.standalone().login("admin").setGlobalPermissions(GlobalPermissions.SYSTEM_ADMIN);
 
-  WebService.Controller controller;
-
-  WsTester tester;
-
-  UserIndex index;
-
-  DbClient dbClient;
-
-  UserUpdater userUpdater;
-
-  UserIndexer userIndexer;
-
-  DbSession session;
-
-  SecurityRealmFactory realmFactory = mock(SecurityRealmFactory.class);
+  private WsTester tester;
+  private DbClient dbClient;
+  private UserUpdater userUpdater;
+  private DbSession session;
+  private SecurityRealmFactory realmFactory = mock(SecurityRealmFactory.class);
+  private DefaultOrganizationProvider defaultOrganizationProvider = DefaultOrganizationProviderRule.create(dbTester);
 
   @Before
   public void setUp() {
@@ -95,11 +86,9 @@ public class ChangePasswordActionTest {
     groupDao.insert(session, new GroupDto().setName("sonar-users"));
     session.commit();
 
-    userIndexer = new UserIndexer(dbClient, esTester.client());
-    index = new UserIndex(esTester.client());
-    userUpdater = new UserUpdater(mock(NewUserNotifier.class), settings, dbClient, userIndexer, system2);
+    UserIndexer userIndexer = new UserIndexer(dbClient, esTester.client());
+    userUpdater = new UserUpdater(mock(NewUserNotifier.class), settings, dbClient, userIndexer, system2, defaultOrganizationProvider);
     tester = new WsTester(new UsersWs(new ChangePasswordAction(userUpdater, userSessionRule)));
-    controller = tester.controller("api/users");
   }
 
   @After
