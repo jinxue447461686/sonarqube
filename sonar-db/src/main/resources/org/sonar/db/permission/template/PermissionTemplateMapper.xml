@@ -98,45 +98,6 @@
     </where>
   </sql>
 
-  <select id="countGroups" parameterType="map" resultType="int">
-    SELECT count(1) FROM
-    (SELECT g.name as name, g.description as description, ptg.permission_reference as permission
-    FROM groups g
-    LEFT JOIN perm_templates_groups ptg ON ptg.group_id=g.id
-    AND ptg.permission_reference=#{query.permission}
-    AND ptg.template_id=#{templateId}
-    UNION
-    -- Add Anyone group permission
-    SELECT
-    #{anyoneGroup} as name,
-    NULL as description,
-    (select ptg.permission_reference
-    FROM perm_templates_groups ptg
-    <where>
-      AND ptg.permission_reference=#{query.permission}
-      AND ptg.template_id=#{templateId}
-      AND ptg.group_id IS NULL
-    </where>) as permission
-    FROM groups g
-    ) groups
-    <where>
-      <if test="groupName!=null">
-        AND (UPPER(groups.name) LIKE #{groupName} ESCAPE '/')
-      </if>
-      <if test="query.search() != null">
-        AND (UPPER(groups.name) LIKE #{query.searchSql} ESCAPE '/')
-      </if>
-      <choose>
-        <when test="query.membership() == 'IN'">
-          AND groups.permission IS NOT NULL
-        </when>
-        <when test="query.membership() == 'OUT'">
-          AND groups.permission IS NULL
-        </when>
-      </choose>
-    </where>
-  </select>
-
   <select id="selectGroupNamesByQueryAndTemplate" parameterType="map" resultType="string">
     SELECT DISTINCT groups.name, LOWER(groups.name), groups.group_id
     <include refid="groupNamesByQueryAndTemplate" />
@@ -348,5 +309,19 @@
       </foreach>
     </where>
     GROUP BY groups.permission, groups.templateId
+  </select>
+
+  <select id="hasGroupPermission" resultType="int" parameterType="map">
+    select count(1)
+    from perm_templates_groups ptg
+    where ptg.template_id = #{templateId}
+    and ptg.permission_reference = #{permission}
+    and
+    <if test="groupId == null">
+      ptg.group_id is null
+    </if>
+    <if test="groupId != null">
+      ptg.group_id = #{groupId}
+    </if>
   </select>
 </mapper>

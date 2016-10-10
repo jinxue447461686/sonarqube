@@ -95,6 +95,14 @@
     ORDER BY UPPER(g.name)
   </select>
 
+  <select id="selectByOrganizationUuid" parameterType="map" resultType="Group">
+    select
+    <include refid="groupColumns"/>
+    from groups g
+    where g.organization_uuid = #{organizationUuid}
+    order by upper(g.name)
+  </select>
+
   <select id="countByQuery" parameterType="map" resultType="int">
     SELECT count(1)
     FROM groups g
@@ -104,4 +112,5 @@
       </if>
     </where>
   </select>
+
 </mapper>

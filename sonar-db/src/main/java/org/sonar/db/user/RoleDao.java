@@ -32,14 +32,27 @@ public class RoleDao implements Dao {
     return mapper(dbSession).selectComponentIdsByPermissionAndUserId(permission, userId);
   }
 
+  /**
+   * @deprecated replaced by {@link org.sonar.db.permission.GroupPermissionDao#selectGroupPermissions(DbSession, long, Long)}
+   * and {@link org.sonar.db.permission.GroupPermissionDao#selectAnyonePermissions(DbSession, Long)}
+   */
+  @Deprecated
   public List<String> selectGroupPermissions(DbSession session, String groupName, @Nullable Long resourceId) {
     return session.getMapper(RoleMapper.class).selectGroupPermissions(groupName, resourceId, DefaultGroups.isAnyone(groupName));
   }
 
+  /**
+   * @deprecated replaced by {@link org.sonar.db.permission.GroupPermissionDao#insert(DbSession, GroupPermissionDto)}
+   */
+  @Deprecated
   public void insertGroupRole(DbSession session, GroupPermissionDto dto) {
     mapper(session).insertGroupRole(dto);
   }
 
+  /**
+   * @deprecated does not support organizations on anyone groups
+   */
+  @Deprecated
   public void deleteGroupRole(GroupPermissionDto groupRole, DbSession session) {
     mapper(session).deleteGroupRole(groupRole);
   }

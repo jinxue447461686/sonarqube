@@ -20,14 +20,15 @@
 
 package org.sonar.db.permission.template;
 
+import java.util.List;
+import java.util.Optional;
+import javax.annotation.CheckForNull;
+import org.sonar.db.Dao;
+import org.sonar.db.DbSession;
+
 import static com.google.common.base.Preconditions.checkArgument;
 import static java.util.Collections.emptyList;
 import static java.util.Objects.requireNonNull;
-
-import java.util.List;
-import java.util.Optional;
-import org.sonar.db.Dao;
-import org.sonar.db.DbSession;
 
 public class PermissionTemplateCharacteristicDao implements Dao {
   public List<PermissionTemplateCharacteristicDto> selectByTemplateIds(DbSession dbSession, List<Long> templateIds) {
@@ -49,6 +50,11 @@ public class PermissionTemplateCharacteristicDao implements Dao {
     requireNonNull(templatePermissionDto.getId());
     mapper(dbSession).update(templatePermissionDto);
     return templatePermissionDto;
+  }
+
+  @CheckForNull
+  public PermissionTemplateCharacteristicDto selectById(DbSession dbSession, long id) {
+    return mapper(dbSession).selectById(id);
   }
 
   private static PermissionTemplateCharacteristicMapper mapper(DbSession dbSession) {

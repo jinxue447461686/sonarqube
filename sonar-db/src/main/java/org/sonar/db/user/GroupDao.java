@@ -137,8 +137,11 @@ public class GroupDao implements Dao {
     return DatabaseUtils.buildLikeValue(upperCasedNameQuery, WildcardPosition.BEFORE_AND_AFTER);
   }
 
+  public List<GroupDto> selectByOrganizationUuid(DbSession dbSession, String organizationUuid) {
+    return mapper(dbSession).selectByOrganizationUuid(organizationUuid);
+  }
+
   private static GroupMapper mapper(DbSession session) {
     return session.getMapper(GroupMapper.class);
   }
-
 }

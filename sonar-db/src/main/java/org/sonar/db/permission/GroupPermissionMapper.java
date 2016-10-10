@@ -37,4 +37,10 @@ public interface GroupPermissionMapper {
   List<GroupPermissionDto> selectGroupPermissionByGroupNames(@Param("groupNames") List<String> groupNames, @Nullable @Param("projectId") Long projectId);
 
   void groupsCountByProjectIdAndPermission(Map<String, Object> parameters, ResultHandler resultHandler);
+
+  List<String> selectGroupPermissions(@Param("groupId") long groupId, @Nullable @Param("projectId") Long projectId);
+
+  List<String> selectAnyonePermissions(@Nullable @Param("projectId") Long projectId);
+
+  void insert(GroupPermissionDto dto);
 }

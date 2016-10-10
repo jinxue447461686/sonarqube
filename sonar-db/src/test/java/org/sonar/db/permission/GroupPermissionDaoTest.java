@@ -49,7 +49,9 @@ import static org.sonar.db.user.GroupTesting.newGroupDto;
 
 public class GroupPermissionDaoTest {
 
-  private static final long COMPONENT_ID = 100L;
+  private static final long GROUP_1_ID = 10L;
+  private static final long GROUP_2_ID = 11L;
+  private static final long PROJECT_1_ID = 100L;
 
   @Rule
   public DbTester db = DbTester.create(System2.INSTANCE);
@@ -57,7 +59,6 @@ public class GroupPermissionDaoTest {
   private PermissionDbTester permissionDb = new PermissionDbTester(db);
   private ComponentDbTester componentDb = new ComponentDbTester(db);
   private DbSession dbSession = db.getSession();
-
   private GroupPermissionDao underTest = new GroupPermissionDao();
 
   @Test
@@ -279,4 +280,36 @@ public class GroupPermissionDaoTest {
     assertThat(underTest.selectGroupPermissionsByGroupNamesAndProject(dbSession, Collections.emptyList(), project.getId())).isEmpty();
   }
 
+  @Test
+  public void selectGroupPermissions() {
+    permissionDb.addGlobalPermissionToGroup("perm1", /* anyone */null);
+    permissionDb.addGlobalPermissionToGroup("perm2", GROUP_1_ID);
+    permissionDb.addGlobalPermissionToGroup("perm3", GROUP_1_ID);
+    permissionDb.addGlobalPermissionToGroup("perm4", GROUP_2_ID);
+    permissionDb.addProjectPermissionToGroup("perm5", GROUP_1_ID, PROJECT_1_ID);
+    permissionDb.addProjectPermissionToGroup("perm6", /* anyone */ null, PROJECT_1_ID);
+
+    // select global permissions on group
+    assertThat(underTest.selectGroupPermissions(dbSession, GROUP_1_ID, null)).containsOnly("perm2", "perm3");
+    assertThat(underTest.selectGroupPermissions(dbSession, /* unknown group */-1L, null)).isEmpty();
+
+    // select project permissions on group
+    assertThat(underTest.selectGroupPermissions(dbSession, GROUP_1_ID, PROJECT_1_ID)).containsOnly("perm5");
+    assertThat(underTest.selectGroupPermissions(dbSession, GROUP_1_ID, /* unknown project */ -1L)).isEmpty();
+  }
+
+  @Test
+  public void selectAnyonePermissions() {
+    permissionDb.addGlobalPermissionToGroup("perm1", /* anyone */null);
+    permissionDb.addGlobalPermissionToGroup("perm2", GROUP_1_ID);
+    permissionDb.addProjectPermissionToGroup("perm3", GROUP_1_ID, PROJECT_1_ID);
+    permissionDb.addProjectPermissionToGroup("perm4", /* anyone */ null, PROJECT_1_ID);
+
+    // select global permissions on group
+    assertThat(underTest.selectAnyonePermissions(dbSession, null)).containsOnly("perm1");
+
+    // select project permissions on group
+    assertThat(underTest.selectAnyonePermissions(dbSession, PROJECT_1_ID)).containsOnly("perm4");
+    assertThat(underTest.selectAnyonePermissions(dbSession, /* unknown project */ -1L)).isEmpty();
+  }
 }
