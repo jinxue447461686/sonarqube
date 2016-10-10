@@ -50,11 +50,8 @@ public class UserDao implements Dao {
   }
 
   public UserDto selectUserById(long userId) {
-    DbSession session = mybatis.openSession(false);
-    try {
+    try (DbSession session = mybatis.openSession(false)) {
       return selectUserById(session, userId);
-    } finally {
-      MyBatis.closeQuietly(session);
     }
   }
 
@@ -79,11 +76,8 @@ public class UserDao implements Dao {
    */
   @CheckForNull
   public UserDto selectActiveUserByLogin(String login) {
-    DbSession session = mybatis.openSession(false);
-    try {
+    try (DbSession session = mybatis.openSession(false)) {
       return selectActiveUserByLogin(session, login);
-    } finally {
-      MyBatis.closeQuietly(session);
     }
   }
 
@@ -106,11 +100,8 @@ public class UserDao implements Dao {
    */
   @Deprecated
   public List<UserDto> selectByLogins(Collection<String> logins) {
-    DbSession session = mybatis.openSession(false);
-    try {
+    try (DbSession session = mybatis.openSession(false)) {
       return selectByLogins(session, logins);
-    } finally {
-      MyBatis.closeQuietly(session);
     }
   }
 
@@ -126,17 +117,13 @@ public class UserDao implements Dao {
   }
 
   public List<UserDto> selectUsers(UserQuery query) {
-    DbSession session = mybatis.openSession(false);
-    try {
+    try (DbSession session = mybatis.openSession(false)) {
       return selectUsers(session, query);
-    } finally {
-      MyBatis.closeQuietly(session);
     }
   }
 
   public List<UserDto> selectUsers(DbSession dbSession, UserQuery query) {
-    UserMapper mapper = getMapper(dbSession);
-    return mapper.selectUsers(query);
+    return getMapper(dbSession).selectUsers(query);
   }
 
   public long countRootUsersButLogin(DbSession dbSession, String login) {
