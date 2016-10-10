@@ -19,7 +19,7 @@
  */
 package org.sonar.server.permission.ws;
 
-import com.google.common.base.Optional;
+import java.util.Optional;
 import org.sonar.api.server.ws.Request;
 import org.sonar.api.server.ws.Response;
 import org.sonar.api.server.ws.WebService;
@@ -27,16 +27,15 @@ import org.sonar.db.DbClient;
 import org.sonar.db.DbSession;
 import org.sonar.server.permission.PermissionChange;
 import org.sonar.server.permission.PermissionUpdater;
-import org.sonarqube.ws.client.permission.AddUserWsRequest;
+import org.sonar.server.permission.ProjectId;
+import org.sonar.server.permission.UserId;
+import org.sonar.server.permission.UserPermissionChange;
 
-import static org.sonar.server.permission.ws.PermissionRequestValidator.validatePermission;
+import static java.util.Arrays.asList;
 import static org.sonar.server.permission.ws.PermissionsWsParametersBuilder.createPermissionParameter;
 import static org.sonar.server.permission.ws.PermissionsWsParametersBuilder.createProjectParameters;
 import static org.sonar.server.permission.ws.PermissionsWsParametersBuilder.createUserLoginParameter;
-import static org.sonar.server.permission.ws.WsProjectRef.newOptionalWsProjectRef;
 import static org.sonarqube.ws.client.permission.PermissionsWsParameters.PARAM_PERMISSION;
-import static org.sonarqube.ws.client.permission.PermissionsWsParameters.PARAM_PROJECT_ID;
-import static org.sonarqube.ws.client.permission.PermissionsWsParameters.PARAM_PROJECT_KEY;
 import static org.sonarqube.ws.client.permission.PermissionsWsParameters.PARAM_USER_LOGIN;
 
 public class AddUserAction implements PermissionsWsAction {
@@ -45,12 +44,12 @@ public class AddUserAction implements PermissionsWsAction {
 
   private final DbClient dbClient;
   private final PermissionUpdater permissionUpdater;
-  private final PermissionChangeBuilder permissionChangeBuilder;
+  private final PermissionWsSupport support;
 
-  public AddUserAction(DbClient dbClient, PermissionUpdater permissionUpdater, PermissionChangeBuilder permissionWsCommons) {
+  public AddUserAction(DbClient dbClient, PermissionUpdater permissionUpdater, PermissionWsSupport support) {
     this.dbClient = dbClient;
     this.permissionUpdater = permissionUpdater;
-    this.permissionChangeBuilder = permissionWsCommons;
+    this.support = support;
   }
 
   @Override
@@ -70,32 +69,21 @@ public class AddUserAction implements PermissionsWsAction {
 
   @Override
   public void handle(Request request, Response response) throws Exception {
-    doHandle(toAddUserWsRequest(request));
-    response.noContent();
-  }
-
-  private void doHandle(AddUserWsRequest request) {
-    Optional<WsProjectRef> projectRef = newOptionalWsProjectRef(request.getProjectId(), request.getProjectKey());
-    validatePermission(request.getPermission(), projectRef);
     DbSession dbSession = dbClient.openSession(false);
     try {
-      PermissionChange permissionChange = permissionChangeBuilder.buildUserPermissionChange(
-        dbSession,
-        request.getPermission(),
-        projectRef,
-        request.getLogin());
-      permissionUpdater.addPermission(permissionChange);
+      UserId user = support.findUser(dbSession, request.mandatoryParam(PARAM_USER_LOGIN));
+      Optional<ProjectId> projectId = support.findProject(dbSession, request);
 
+      PermissionChange change = new UserPermissionChange(
+        PermissionChange.Operation.ADD,
+        request.mandatoryParam(PARAM_PERMISSION),
+        projectId.orElse(null),
+        user);
+      permissionUpdater.apply(dbSession, asList(change));
     } finally {
       dbClient.closeSession(dbSession);
     }
-  }
 
-  private static AddUserWsRequest toAddUserWsRequest(Request request) {
-    return new AddUserWsRequest()
-      .setPermission(request.mandatoryParam(PARAM_PERMISSION))
-      .setLogin(request.mandatoryParam(PARAM_USER_LOGIN))
-      .setProjectId(request.param(PARAM_PROJECT_ID))
-      .setProjectKey(request.param(PARAM_PROJECT_KEY));
+    response.noContent();
   }
 }

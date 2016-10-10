@@ -20,32 +20,18 @@
 package org.sonar.server.permission.ws;
 
 import org.junit.Before;
-import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.ExpectedException;
-import org.mockito.ArgumentCaptor;
-import org.sonar.api.resources.Qualifiers;
-import org.sonar.api.utils.System2;
-import org.sonar.api.web.UserRole;
-import org.sonar.db.DbClient;
-import org.sonar.db.DbSession;
-import org.sonar.db.DbTester;
 import org.sonar.db.component.ComponentDto;
-import org.sonar.db.component.ResourceTypesRule;
 import org.sonar.db.user.GroupDto;
-import org.sonar.server.component.ComponentFinder;
 import org.sonar.server.exceptions.BadRequestException;
 import org.sonar.server.exceptions.NotFoundException;
 import org.sonar.server.exceptions.ServerException;
-import org.sonar.server.permission.PermissionChange;
-import org.sonar.server.permission.PermissionUpdater;
-import org.sonar.server.tester.UserSessionRule;
-import org.sonar.server.usergroups.ws.UserGroupFinder;
 import org.sonar.server.ws.WsTester;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
+import static org.sonar.api.web.UserRole.ADMIN;
+import static org.sonar.api.web.UserRole.ISSUE_ADMIN;
+import static org.sonar.core.permission.GlobalPermissions.PROVISIONING;
 import static org.sonar.core.permission.GlobalPermissions.SYSTEM_ADMIN;
 import static org.sonar.db.component.ComponentTesting.newFileDto;
 import static org.sonar.db.component.ComponentTesting.newProjectDto;
@@ -58,109 +44,118 @@ import static org.sonarqube.ws.client.permission.PermissionsWsParameters.PARAM_P
 import static org.sonarqube.ws.client.permission.PermissionsWsParameters.PARAM_PROJECT_ID;
 import static org.sonarqube.ws.client.permission.PermissionsWsParameters.PARAM_PROJECT_KEY;
 
+public class RemoveGroupActionTest extends BasePermissionWsTest<RemoveGroupAction> {
 
-public class RemoveGroupActionTest {
-  UserSessionRule userSession = UserSessionRule.standalone();
-  WsTester ws;
-  @Rule
-  public DbTester db = DbTester.create(System2.INSTANCE);
-  @Rule
-  public ExpectedException expectedException = ExpectedException.none();
-  ResourceTypesRule resourceTypes = new ResourceTypesRule().setRootQualifiers(Qualifiers.PROJECT, Qualifiers.VIEW, "DEV");
-  private PermissionUpdater permissionUpdater;
-  private ArgumentCaptor<PermissionChange> permissionChangeCaptor = ArgumentCaptor.forClass(PermissionChange.class);
-  final DbSession dbSession = db.getSession();
+  private static final String A_PROJECT_UUID = "project-uuid";
+  private static final String A_PROJECT_KEY = "project-key";
+
+  private GroupDto aGroup;
 
   @Before
   public void setUp() {
-    permissionUpdater = mock(PermissionUpdater.class);
-    DbClient dbClient = db.getDbClient();
-    ComponentFinder componentFinder = new ComponentFinder(dbClient);
-    ws = new WsTester(new PermissionsWs(
-      new RemoveGroupAction(dbClient, new PermissionChangeBuilder(new PermissionDependenciesFinder(dbClient, componentFinder, new UserGroupFinder(dbClient), resourceTypes)), permissionUpdater)));
-    userSession.login("admin").setGlobalPermissions(SYSTEM_ADMIN);
+    aGroup = userTester.insertGroup(defaultOrganizationProvider.getDto(), "sonar-administrators");
+  }
+
+  @Override
+  protected RemoveGroupAction buildWsAction() {
+    return new RemoveGroupAction(db.getDbClient(), newPermissionUpdater(), newPermissionWsSupport());
   }
 
   @Test
-  public void call_permission_service_with_right_data() throws Exception {
-    insertGroup("sonar-administrators");
-    commit();
+  public void remove_permission_using_group_name() throws Exception {
+    userTester.insertPermissionOnGroup(aGroup, SYSTEM_ADMIN);
+    userTester.insertPermissionOnGroup(aGroup, PROVISIONING);
 
+    loginAsAdmin();
     newRequest()
-      .setParam(PARAM_GROUP_NAME, "sonar-administrators")
-      .setParam(PARAM_PERMISSION, SYSTEM_ADMIN)
+      .setParam(PARAM_GROUP_NAME, aGroup.getName())
+      .setParam(PARAM_PERMISSION, PROVISIONING)
       .execute();
 
-    verify(permissionUpdater).removePermission(permissionChangeCaptor.capture());
-    PermissionChange permissionChange = permissionChangeCaptor.getValue();
-    assertThat(permissionChange.groupName()).isEqualTo("sonar-administrators");
-    assertThat(permissionChange.permission()).isEqualTo(SYSTEM_ADMIN);
+    assertThat(userTester.selectGroupPermissions(aGroup, null)).containsOnly(SYSTEM_ADMIN);
   }
 
   @Test
-  public void remove_by_group_id() throws Exception {
-    GroupDto group = insertGroup("sonar-administrators");
-    commit();
+  public void remove_permission_using_group_id() throws Exception {
+    userTester.insertPermissionOnGroup(aGroup, SYSTEM_ADMIN);
+    userTester.insertPermissionOnGroup(aGroup, PROVISIONING);
 
+    loginAsAdmin();
     newRequest()
-      .setParam(PARAM_GROUP_ID, group.getId().toString())
-      .setParam(PARAM_PERMISSION, SYSTEM_ADMIN)
+      .setParam(PARAM_GROUP_ID, aGroup.getId().toString())
+      .setParam(PARAM_PERMISSION, PROVISIONING)
       .execute();
 
-    verify(permissionUpdater).removePermission(permissionChangeCaptor.capture());
-    PermissionChange permissionChange = permissionChangeCaptor.getValue();
-    assertThat(permissionChange.groupName()).isEqualTo("sonar-administrators");
+    assertThat(userTester.selectGroupPermissions(aGroup, null)).containsOnly(SYSTEM_ADMIN);
   }
 
   @Test
-  public void remove_with_project_uuid() throws Exception {
-    insertComponent(newProjectDto("project-uuid").setKey("project-key"));
-    insertGroup("sonar-administrators");
-    commit();
+  public void remove_project_permission() throws Exception {
+    ComponentDto project = componentTester.insertComponent(newProjectDto(A_PROJECT_UUID).setKey(A_PROJECT_KEY));
+    userTester.insertPermissionOnGroup(aGroup, SYSTEM_ADMIN);
+    userTester.insertProjectPermissionOnGroup(aGroup, ADMIN, project);
+    userTester.insertProjectPermissionOnGroup(aGroup, ISSUE_ADMIN, project);
 
+    loginAsAdmin();
     newRequest()
-      .setParam(PARAM_GROUP_NAME, "sonar-administrators")
-      .setParam(PARAM_PROJECT_ID, "project-uuid")
-      .setParam(PARAM_PERMISSION, SYSTEM_ADMIN)
+      .setParam(PARAM_GROUP_NAME, aGroup.getName())
+      .setParam(PARAM_PROJECT_ID, project.uuid())
+      .setParam(PARAM_PERMISSION, ADMIN)
       .execute();
 
-    verify(permissionUpdater).removePermission(permissionChangeCaptor.capture());
-    PermissionChange permissionChange = permissionChangeCaptor.getValue();
-    assertThat(permissionChange.componentKey()).isEqualTo("project-key");
+    assertThat(userTester.selectGroupPermissions(aGroup, null)).containsOnly(SYSTEM_ADMIN);
+    assertThat(userTester.selectGroupPermissions(aGroup, project)).containsOnly(ISSUE_ADMIN);
   }
 
   @Test
   public void remove_with_view_uuid() throws Exception {
-    insertComponent(newView("view-uuid").setKey("view-key"));
-    insertGroup("sonar-administrators");
-    db.commit();
+    ComponentDto view = componentTester.insertComponent(newView("view-uuid").setKey("view-key"));
+    userTester.insertPermissionOnGroup(aGroup, SYSTEM_ADMIN);
+    userTester.insertProjectPermissionOnGroup(aGroup, ADMIN, view);
+    userTester.insertProjectPermissionOnGroup(aGroup, ISSUE_ADMIN, view);
 
+    loginAsAdmin();
     newRequest()
-      .setParam(PARAM_GROUP_NAME, "sonar-administrators")
-      .setParam(PARAM_PROJECT_ID, "view-uuid")
-      .setParam(PARAM_PERMISSION, SYSTEM_ADMIN)
+      .setParam(PARAM_GROUP_NAME, aGroup.getName())
+      .setParam(PARAM_PROJECT_ID, view.uuid())
+      .setParam(PARAM_PERMISSION, ADMIN)
       .execute();
 
-    verify(permissionUpdater).removePermission(permissionChangeCaptor.capture());
-    PermissionChange permissionChange = permissionChangeCaptor.getValue();
-    assertThat(permissionChange.componentKey()).isEqualTo("view-key");
+    assertThat(userTester.selectGroupPermissions(aGroup, null)).containsOnly(SYSTEM_ADMIN);
+    assertThat(userTester.selectGroupPermissions(aGroup, view)).containsOnly(ISSUE_ADMIN);
   }
 
   @Test
   public void remove_with_project_key() throws Exception {
-    insertComponent(newProjectDto("project-uuid").setKey("project-key"));
-    insertGroup("sonar-administrators");
-    db.commit();
+    ComponentDto project = componentTester.insertComponent(newProjectDto(A_PROJECT_UUID).setKey(A_PROJECT_KEY));
+    userTester.insertPermissionOnGroup(aGroup, SYSTEM_ADMIN);
+    userTester.insertProjectPermissionOnGroup(aGroup, ADMIN, project);
+    userTester.insertProjectPermissionOnGroup(aGroup, ISSUE_ADMIN, project);
 
+    loginAsAdmin();
     newRequest()
-      .setParam(PARAM_GROUP_NAME, "sonar-administrators")
-      .setParam(PARAM_PROJECT_KEY, "project-key")
-      .setParam(PARAM_PERMISSION, SYSTEM_ADMIN)
+      .setParam(PARAM_GROUP_NAME, aGroup.getName())
+      .setParam(PARAM_PROJECT_KEY, project.getKey())
+      .setParam(PARAM_PERMISSION, ADMIN)
       .execute();
 
-    verify(permissionUpdater).removePermission(permissionChangeCaptor.capture());
-    PermissionChange permissionChange = permissionChangeCaptor.getValue();
-    assertThat(permissionChange.componentKey()).isEqualTo("project-key");
+    assertThat(userTester.selectGroupPermissions(aGroup, null)).containsOnly(SYSTEM_ADMIN);
+    assertThat(userTester.selectGroupPermissions(aGroup, project)).containsOnly(ISSUE_ADMIN);
+  }
+
+  @Test
+  public void fail_to_remove_last_sysadmin_permission() throws Exception {
+    userTester.insertPermissionOnGroup(aGroup, SYSTEM_ADMIN);
+    userTester.insertPermissionOnGroup(aGroup, PROVISIONING);
+
+    expectedException.expect(BadRequestException.class);
+    expectedException.expectMessage("Last group with 'admin' permission. Permission cannot be removed.");
+
+    loginAsAdmin();
+    newRequest()
+      .setParam(PARAM_GROUP_NAME, aGroup.getName())
+      .setParam(PARAM_PERMISSION, SYSTEM_ADMIN)
+      .execute();
   }
 
   @Test
@@ -168,7 +163,7 @@ public class RemoveGroupActionTest {
     expectedException.expect(NotFoundException.class);
 
     newRequest()
-      .setParam(PARAM_GROUP_NAME, "sonar-administrators")
+      .setParam(PARAM_GROUP_NAME, aGroup.getName())
       .setParam(PARAM_PROJECT_ID, "unknown-project-uuid")
       .setParam(PARAM_PERMISSION, SYSTEM_ADMIN)
       .execute();
@@ -179,21 +174,20 @@ public class RemoveGroupActionTest {
     expectedException.expect(BadRequestException.class);
 
     newRequest()
-      .setParam(PARAM_GROUP_NAME, "sonar-administrators")
-      .setParam(PARAM_PERMISSION, UserRole.ISSUE_ADMIN)
+      .setParam(PARAM_GROUP_NAME, aGroup.getName())
+      .setParam(PARAM_PERMISSION, ISSUE_ADMIN)
       .execute();
   }
 
   @Test
   public void fail_when_component_is_not_a_project() throws Exception {
+    ComponentDto file = componentTester.insertComponent(newFileDto(newProjectDto(A_PROJECT_UUID), null, "file-uuid"));
+
     expectedException.expect(BadRequestException.class);
-    insertComponent(newFileDto(newProjectDto("project-uuid"), null, "file-uuid"));
-    insertGroup("sonar-administrators");
-    commit();
 
     newRequest()
-      .setParam(PARAM_GROUP_NAME, "sonar-administrators")
-      .setParam(PARAM_PROJECT_ID, "file-uuid")
+      .setParam(PARAM_GROUP_NAME, aGroup.getName())
+      .setParam(PARAM_PROJECT_ID, file.uuid())
       .setParam(PARAM_PERMISSION, SYSTEM_ADMIN)
       .execute();
   }
@@ -202,8 +196,8 @@ public class RemoveGroupActionTest {
   public void fail_when_get_request() throws Exception {
     expectedException.expect(ServerException.class);
 
-    ws.newGetRequest(CONTROLLER, ACTION)
-      .setParam(PARAM_GROUP_NAME, "sonar-administrators")
+    wsTester.newGetRequest(CONTROLLER, ACTION)
+      .setParam(PARAM_GROUP_NAME, aGroup.getName())
       .setParam(PARAM_PERMISSION, SYSTEM_ADMIN)
       .execute();
   }
@@ -222,14 +216,14 @@ public class RemoveGroupActionTest {
     expectedException.expect(IllegalArgumentException.class);
 
     newRequest()
-      .setParam(PARAM_GROUP_NAME, "sonar-administrators")
+      .setParam(PARAM_GROUP_NAME, aGroup.getName())
       .execute();
   }
 
   @Test
   public void fail_when_group_id_does_not_exist() throws Exception {
     expectedException.expect(NotFoundException.class);
-    expectedException.expectMessage("Group with id '42' is not found");
+    expectedException.expectMessage("No group with id '42'");
 
     newRequest()
       .setParam(PARAM_PERMISSION, SYSTEM_ADMIN)
@@ -239,32 +233,25 @@ public class RemoveGroupActionTest {
 
   @Test
   public void fail_when_project_uuid_and_project_key_are_provided() throws Exception {
+    ComponentDto project = componentTester.insertComponent(newProjectDto(A_PROJECT_UUID).setKey(A_PROJECT_KEY));
+
     expectedException.expect(BadRequestException.class);
     expectedException.expectMessage("Project id or project key can be provided, not both.");
-    insertComponent(newProjectDto("project-uuid").setKey("project-key"));
-    commit();
 
     newRequest()
-      .setParam(PARAM_GROUP_NAME, "sonar-administrators")
+      .setParam(PARAM_GROUP_NAME, aGroup.getName())
       .setParam(PARAM_PERMISSION, SYSTEM_ADMIN)
-      .setParam(PARAM_PROJECT_ID, "project-uuid")
-      .setParam(PARAM_PROJECT_KEY, "project-key")
+      .setParam(PARAM_PROJECT_ID, project.uuid())
+      .setParam(PARAM_PROJECT_KEY, project.getKey())
       .execute();
   }
 
   private WsTester.TestRequest newRequest() {
-    return ws.newPostRequest(CONTROLLER, ACTION);
+    return wsTester.newPostRequest(CONTROLLER, ACTION);
   }
 
-  private GroupDto insertGroup(String groupName) {
-    return db.getDbClient().groupDao().insert(dbSession, new GroupDto().setName(groupName));
+  private void loginAsAdmin() {
+    userSession.login("admin").setGlobalPermissions(SYSTEM_ADMIN);
   }
 
-  private void insertComponent(ComponentDto component) {
-    db.getDbClient().componentDao().insert(dbSession, component);
-  }
-
-  private void commit() {
-    dbSession.commit();
-  }
 }

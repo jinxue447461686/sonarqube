@@ -19,32 +19,19 @@
  */
 package org.sonar.server.permission.ws;
 
-import java.io.IOException;
-import java.io.InputStream;
 import javax.annotation.Nullable;
-import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.ExpectedException;
-import org.sonar.api.resources.Qualifiers;
 import org.sonar.api.server.ws.WebService;
-import org.sonar.api.utils.System2;
 import org.sonar.core.permission.GlobalPermissions;
-import org.sonar.db.DbClient;
-import org.sonar.db.DbSession;
-import org.sonar.db.DbTester;
-import org.sonar.db.component.ResourceTypesRule;
 import org.sonar.db.permission.template.PermissionTemplateDto;
 import org.sonar.db.permission.template.PermissionTemplateUserDto;
 import org.sonar.db.user.UserDto;
-import org.sonar.server.component.ComponentFinder;
 import org.sonar.server.exceptions.BadRequestException;
 import org.sonar.server.exceptions.ForbiddenException;
 import org.sonar.server.exceptions.NotFoundException;
 import org.sonar.server.exceptions.UnauthorizedException;
-import org.sonar.server.tester.UserSessionRule;
-import org.sonar.server.usergroups.ws.UserGroupFinder;
-import org.sonar.server.ws.TestRequest;
-import org.sonar.server.ws.WsActionTester;
+import org.sonar.server.permission.ws.template.TemplateUsersAction;
+import org.sonar.server.ws.WsTester;
 import org.sonarqube.ws.WsPermissions;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -54,74 +41,59 @@ import static org.sonar.api.web.UserRole.ISSUE_ADMIN;
 import static org.sonar.api.web.UserRole.USER;
 import static org.sonar.db.permission.template.PermissionTemplateTesting.newPermissionTemplateDto;
 import static org.sonar.db.permission.template.PermissionTemplateTesting.newPermissionTemplateUserDto;
+import static org.sonar.db.user.UserTesting.newUserDto;
 import static org.sonar.test.JsonAssert.assertJson;
 import static org.sonarqube.ws.MediaTypes.PROTOBUF;
+import static org.sonarqube.ws.client.permission.PermissionsWsParameters.CONTROLLER;
 import static org.sonarqube.ws.client.permission.PermissionsWsParameters.PARAM_PERMISSION;
 import static org.sonarqube.ws.client.permission.PermissionsWsParameters.PARAM_TEMPLATE_ID;
 import static org.sonarqube.ws.client.permission.PermissionsWsParameters.PARAM_TEMPLATE_NAME;
 
-public class TemplateUsersActionTest {
+public class TemplateUsersActionTest extends BasePermissionWsTest<TemplateUsersAction> {
 
-  @Rule
-  public ExpectedException expectedException = ExpectedException.none();
-  @Rule
-  public UserSessionRule userSession = UserSessionRule.standalone();
-  @Rule
-  public DbTester db = DbTester.create(System2.INSTANCE);
-
-  ResourceTypesRule resourceTypes = new ResourceTypesRule().setRootQualifiers(Qualifiers.PROJECT, Qualifiers.VIEW, "DEV");
-
-  DbClient dbClient = db.getDbClient();
-  DbSession dbSession = db.getSession();
-
-  PermissionDependenciesFinder dependenciesFinder = new PermissionDependenciesFinder(dbClient, new ComponentFinder(dbClient), new UserGroupFinder(dbClient), resourceTypes);
-
-  TemplateUsersAction underTest = new TemplateUsersAction(dbClient, userSession, dependenciesFinder);
-  WsActionTester ws = new WsActionTester(underTest);
+  @Override
+  protected TemplateUsersAction buildWsAction() {
+    return new TemplateUsersAction(db.getDbClient(), userSession, newPermissionWsSupport());
+  }
 
   @Test
-  public void search_for_users_with_response_example() {
-    setSysAdminUser();
+  public void search_for_users_with_response_example() throws Exception {
+    UserDto user1 = insertUser(newUserDto().setLogin("admin").setName("Administrator").setEmail("admin@admin.com"));
+    UserDto user2 = insertUser(newUserDto().setLogin("george.orwell").setName("George Orwell").setEmail("george.orwell@1984.net"));
 
-    UserDto user1 = insertUser(new UserDto().setLogin("admin").setName("Administrator").setEmail("admin@admin.com"));
-    UserDto user2 = insertUser(new UserDto().setLogin("george.orwell").setName("George Orwell").setEmail("george.orwell@1984.net"));
+    PermissionTemplateDto template1 = insertTemplate("template-uuid-1");
+    addUserToTemplate(newPermissionTemplateUser(CODEVIEWER, template1, user1));
+    addUserToTemplate(newPermissionTemplateUser(CODEVIEWER, template1, user2));
+    addUserToTemplate(newPermissionTemplateUser(ADMIN, template1, user2));
 
-    PermissionTemplateDto template1 = dbClient.permissionTemplateDao().insert(dbSession, newPermissionTemplateDto().setUuid("template-uuid-1"));
-
-    addUserToTemplate(newPermissionTemplateUser(CODEVIEWER, template1.getId(), user1.getId()));
-    addUserToTemplate(newPermissionTemplateUser(CODEVIEWER, template1.getId(), user2.getId()));
-    addUserToTemplate(newPermissionTemplateUser(ADMIN, template1.getId(), user2.getId()));
-
-    commit();
-
-    String result = newRequest(null, template1.getUuid()).execute().getInput();
+    loginAsAdmin();
+    String result = newRequest(null, template1.getUuid()).execute().outputAsString();
     assertJson(result).isSimilarTo(getClass().getResource("template_users-example.json"));
   }
 
   @Test
-  public void search_for_users_by_template_name() throws IOException {
-    setSysAdminUser();
+  public void search_for_users_by_template_name() throws Exception {
+    loginAsAdmin();
 
-    UserDto user1 = insertUser(new UserDto().setLogin("login-1").setName("name-1").setEmail("email-1"));
-    UserDto user2 = insertUser(new UserDto().setLogin("login-2").setName("name-2").setEmail("email-2"));
-    UserDto user3 = insertUser(new UserDto().setLogin("login-3").setName("name-3").setEmail("email-3"));
+    UserDto user1 = insertUser(newUserDto().setLogin("login-1").setName("name-1").setEmail("email-1"));
+    UserDto user2 = insertUser(newUserDto().setLogin("login-2").setName("name-2").setEmail("email-2"));
+    UserDto user3 = insertUser(newUserDto().setLogin("login-3").setName("name-3").setEmail("email-3"));
 
-    PermissionTemplateDto template = dbClient.permissionTemplateDao().insert(dbSession, newPermissionTemplateDto().setUuid("template-uuid-1"));
-    addUserToTemplate(newPermissionTemplateUser(USER, template.getId(), user1.getId()));
-    addUserToTemplate(newPermissionTemplateUser(USER, template.getId(), user2.getId()));
-    addUserToTemplate(newPermissionTemplateUser(ISSUE_ADMIN, template.getId(), user1.getId()));
-    addUserToTemplate(newPermissionTemplateUser(ISSUE_ADMIN, template.getId(), user3.getId()));
+    PermissionTemplateDto template = insertTemplate("template-uuid-1");
+    addUserToTemplate(newPermissionTemplateUser(USER, template, user1));
+    addUserToTemplate(newPermissionTemplateUser(USER, template, user2));
+    addUserToTemplate(newPermissionTemplateUser(ISSUE_ADMIN, template, user1));
+    addUserToTemplate(newPermissionTemplateUser(ISSUE_ADMIN, template, user3));
 
-    PermissionTemplateDto anotherTemplate = dbClient.permissionTemplateDao().insert(dbSession, newPermissionTemplateDto().setUuid("template-uuid-2"));
-    addUserToTemplate(newPermissionTemplateUser(USER, anotherTemplate.getId(), user1.getId()));
-    commit();
+    PermissionTemplateDto anotherTemplate = insertTemplate("template-uuid-2");
+    addUserToTemplate(newPermissionTemplateUser(USER, anotherTemplate, user1));
 
-    InputStream responseStream = newRequest(null, null)
+    byte[] bytes = newRequest(null, null)
       .setParam(PARAM_TEMPLATE_NAME, template.getName())
       .setMediaType(PROTOBUF)
-      .execute().getInputStream();
+      .execute().output();
 
-    WsPermissions.UsersWsResponse response = WsPermissions.UsersWsResponse.parseFrom(responseStream);
+    WsPermissions.UsersWsResponse response = WsPermissions.UsersWsResponse.parseFrom(bytes);
     assertThat(response.getUsersList()).extracting("login").containsExactly("login-1", "login-2", "login-3");
     assertThat(response.getUsers(0).getPermissionsList()).containsOnly("issueadmin", "user");
     assertThat(response.getUsers(1).getPermissionsList()).containsOnly("user");
@@ -129,220 +101,209 @@ public class TemplateUsersActionTest {
   }
 
   @Test
-  public void search_using_text_query() throws IOException {
-    setSysAdminUser();
+  public void search_using_text_query() throws Exception {
+    loginAsAdmin();
 
-    UserDto user1 = insertUser(new UserDto().setLogin("login-1").setName("name-1").setEmail("email-1"));
-    UserDto user2 = insertUser(new UserDto().setLogin("login-2").setName("name-2").setEmail("email-2"));
-    UserDto user3 = insertUser(new UserDto().setLogin("login-3").setName("name-3").setEmail("email-3"));
+    UserDto user1 = insertUser(newUserDto().setLogin("login-1").setName("name-1").setEmail("email-1"));
+    UserDto user2 = insertUser(newUserDto().setLogin("login-2").setName("name-2").setEmail("email-2"));
+    UserDto user3 = insertUser(newUserDto().setLogin("login-3").setName("name-3").setEmail("email-3"));
 
-    PermissionTemplateDto template = dbClient.permissionTemplateDao().insert(dbSession, newPermissionTemplateDto().setUuid("template-uuid-1"));
-    addUserToTemplate(newPermissionTemplateUser(USER, template.getId(), user1.getId()));
-    addUserToTemplate(newPermissionTemplateUser(USER, template.getId(), user2.getId()));
-    addUserToTemplate(newPermissionTemplateUser(ISSUE_ADMIN, template.getId(), user1.getId()));
-    addUserToTemplate(newPermissionTemplateUser(ISSUE_ADMIN, template.getId(), user3.getId()));
+    PermissionTemplateDto template = insertTemplate("template-uuid-1");
+    addUserToTemplate(newPermissionTemplateUser(USER, template, user1));
+    addUserToTemplate(newPermissionTemplateUser(USER, template, user2));
+    addUserToTemplate(newPermissionTemplateUser(ISSUE_ADMIN, template, user1));
+    addUserToTemplate(newPermissionTemplateUser(ISSUE_ADMIN, template, user3));
 
-    PermissionTemplateDto anotherTemplate = dbClient.permissionTemplateDao().insert(dbSession, newPermissionTemplateDto().setUuid("template-uuid-2"));
-    addUserToTemplate(newPermissionTemplateUser(USER, anotherTemplate.getId(), user1.getId()));
-    commit();
+    PermissionTemplateDto anotherTemplate = insertTemplate("template-uuid-2");
+    addUserToTemplate(newPermissionTemplateUser(USER, anotherTemplate, user1));
 
-    InputStream responseStream = newRequest(null, null)
+    byte[] bytes = newRequest(null, null)
       .setParam(PARAM_TEMPLATE_NAME, template.getName())
       .setParam(WebService.Param.TEXT_QUERY, "ame-1")
       .setMediaType(PROTOBUF)
-      .execute().getInputStream();
+      .execute().output();
 
-    WsPermissions.UsersWsResponse response = WsPermissions.UsersWsResponse.parseFrom(responseStream);
+    WsPermissions.UsersWsResponse response = WsPermissions.UsersWsResponse.parseFrom(bytes);
     assertThat(response.getUsersList()).extracting("login").containsOnly("login-1");
   }
 
   @Test
-  public void search_using_permission() throws IOException {
-    setSysAdminUser();
+  public void search_using_permission() throws Exception {
+    UserDto user1 = insertUser(newUserDto().setLogin("login-1").setName("name-1").setEmail("email-1"));
+    UserDto user2 = insertUser(newUserDto().setLogin("login-2").setName("name-2").setEmail("email-2"));
+    UserDto user3 = insertUser(newUserDto().setLogin("login-3").setName("name-3").setEmail("email-3"));
 
-    UserDto user1 = insertUser(new UserDto().setLogin("login-1").setName("name-1").setEmail("email-1"));
-    UserDto user2 = insertUser(new UserDto().setLogin("login-2").setName("name-2").setEmail("email-2"));
-    UserDto user3 = insertUser(new UserDto().setLogin("login-3").setName("name-3").setEmail("email-3"));
+    PermissionTemplateDto template = insertTemplate("template-uuid-1");
+    addUserToTemplate(newPermissionTemplateUser(USER, template, user1));
+    addUserToTemplate(newPermissionTemplateUser(USER, template, user2));
+    addUserToTemplate(newPermissionTemplateUser(ISSUE_ADMIN, template, user1));
+    addUserToTemplate(newPermissionTemplateUser(ISSUE_ADMIN, template, user3));
 
-    PermissionTemplateDto template = dbClient.permissionTemplateDao().insert(dbSession, newPermissionTemplateDto().setUuid("template-uuid-1"));
-    addUserToTemplate(newPermissionTemplateUser(USER, template.getId(), user1.getId()));
-    addUserToTemplate(newPermissionTemplateUser(USER, template.getId(), user2.getId()));
-    addUserToTemplate(newPermissionTemplateUser(ISSUE_ADMIN, template.getId(), user1.getId()));
-    addUserToTemplate(newPermissionTemplateUser(ISSUE_ADMIN, template.getId(), user3.getId()));
+    PermissionTemplateDto anotherTemplate = insertTemplate("template-uuid-2");
+    addUserToTemplate(newPermissionTemplateUser(USER, anotherTemplate, user1));
 
-    PermissionTemplateDto anotherTemplate = dbClient.permissionTemplateDao().insert(dbSession, newPermissionTemplateDto().setUuid("template-uuid-2"));
-    addUserToTemplate(newPermissionTemplateUser(USER, anotherTemplate.getId(), user1.getId()));
-    commit();
-
-    InputStream responseStream = newRequest(USER, template.getUuid())
+    loginAsAdmin();
+    byte[] bytes = newRequest(USER, template.getUuid())
       .setMediaType(PROTOBUF)
-      .execute().getInputStream();
-    WsPermissions.UsersWsResponse response = WsPermissions.UsersWsResponse.parseFrom(responseStream);
+      .execute().output();
+    WsPermissions.UsersWsResponse response = WsPermissions.UsersWsResponse.parseFrom(bytes);
     assertThat(response.getUsersList()).extracting("login").containsExactly("login-1", "login-2");
     assertThat(response.getUsers(0).getPermissionsList()).containsOnly("issueadmin", "user");
     assertThat(response.getUsers(1).getPermissionsList()).containsOnly("user");
   }
 
   @Test
-  public void search_with_pagination() throws IOException {
-    setSysAdminUser();
+  public void search_with_pagination() throws Exception {
+    UserDto user1 = insertUser(newUserDto().setLogin("login-1").setName("name-1").setEmail("email-1"));
+    UserDto user2 = insertUser(newUserDto().setLogin("login-2").setName("name-2").setEmail("email-2"));
+    UserDto user3 = insertUser(newUserDto().setLogin("login-3").setName("name-3").setEmail("email-3"));
 
-    UserDto user1 = insertUser(new UserDto().setLogin("login-1").setName("name-1").setEmail("email-1"));
-    UserDto user2 = insertUser(new UserDto().setLogin("login-2").setName("name-2").setEmail("email-2"));
-    UserDto user3 = insertUser(new UserDto().setLogin("login-3").setName("name-3").setEmail("email-3"));
+    PermissionTemplateDto template = insertTemplate("template-uuid-1");
+    addUserToTemplate(newPermissionTemplateUser(USER, template, user1));
+    addUserToTemplate(newPermissionTemplateUser(USER, template, user2));
+    addUserToTemplate(newPermissionTemplateUser(ISSUE_ADMIN, template, user1));
+    addUserToTemplate(newPermissionTemplateUser(ISSUE_ADMIN, template, user3));
 
-    PermissionTemplateDto template = dbClient.permissionTemplateDao().insert(dbSession, newPermissionTemplateDto().setUuid("template-uuid-1"));
-    addUserToTemplate(newPermissionTemplateUser(USER, template.getId(), user1.getId()));
-    addUserToTemplate(newPermissionTemplateUser(USER, template.getId(), user2.getId()));
-    addUserToTemplate(newPermissionTemplateUser(ISSUE_ADMIN, template.getId(), user1.getId()));
-    addUserToTemplate(newPermissionTemplateUser(ISSUE_ADMIN, template.getId(), user3.getId()));
+    PermissionTemplateDto anotherTemplate = insertTemplate("template-uuid-2");
+    addUserToTemplate(newPermissionTemplateUser(USER, anotherTemplate, user1));
 
-    PermissionTemplateDto anotherTemplate = dbClient.permissionTemplateDao().insert(dbSession, newPermissionTemplateDto().setUuid("template-uuid-2"));
-    addUserToTemplate(newPermissionTemplateUser(USER, anotherTemplate.getId(), user1.getId()));
-    commit();
-
-    InputStream responseStream = newRequest(USER, null)
+    loginAsAdmin();
+    byte[] bytes = newRequest(USER, null)
       .setParam(PARAM_TEMPLATE_NAME, template.getName())
       .setParam(WebService.Param.SELECTED, "all")
       .setParam(WebService.Param.PAGE, "2")
       .setParam(WebService.Param.PAGE_SIZE, "1")
       .setMediaType(PROTOBUF)
-      .execute().getInputStream();
+      .execute().output();
 
-    WsPermissions.UsersWsResponse response = WsPermissions.UsersWsResponse.parseFrom(responseStream);
+    WsPermissions.UsersWsResponse response = WsPermissions.UsersWsResponse.parseFrom(bytes);
     assertThat(response.getUsersList()).extracting("login").containsOnly("login-2");
   }
 
   @Test
-  public void users_are_sorted_by_name() throws IOException {
-    setSysAdminUser();
+  public void users_are_sorted_by_name() throws Exception {
+    UserDto user1 = insertUser(newUserDto().setLogin("login-2").setName("name-2"));
+    UserDto user2 = insertUser(newUserDto().setLogin("login-3").setName("name-3"));
+    UserDto user3 = insertUser(newUserDto().setLogin("login-1").setName("name-1"));
 
-    UserDto user1 = insertUser(new UserDto().setLogin("login-2").setName("name-2"));
-    UserDto user2 = insertUser(new UserDto().setLogin("login-3").setName("name-3"));
-    UserDto user3 = insertUser(new UserDto().setLogin("login-1").setName("name-1"));
+    PermissionTemplateDto template = insertTemplate("template-uuid-1");
+    addUserToTemplate(newPermissionTemplateUser(USER, template, user1));
+    addUserToTemplate(newPermissionTemplateUser(USER, template, user2));
+    addUserToTemplate(newPermissionTemplateUser(ISSUE_ADMIN, template, user3));
 
-    PermissionTemplateDto template = dbClient.permissionTemplateDao().insert(dbSession, newPermissionTemplateDto().setUuid("template-uuid-1"));
-    addUserToTemplate(newPermissionTemplateUser(USER, template.getId(), user1.getId()));
-    addUserToTemplate(newPermissionTemplateUser(USER, template.getId(), user2.getId()));
-    addUserToTemplate(newPermissionTemplateUser(ISSUE_ADMIN, template.getId(), user3.getId()));
-    commit();
-
-    InputStream responseStream = newRequest(null, null)
+    loginAsAdmin();
+    byte[] bytes = newRequest(null, null)
       .setParam(PARAM_TEMPLATE_NAME, template.getName())
       .setMediaType(PROTOBUF)
-      .execute().getInputStream();
+      .execute().output();
 
-    WsPermissions.UsersWsResponse response = WsPermissions.UsersWsResponse.parseFrom(responseStream);
+    WsPermissions.UsersWsResponse response = WsPermissions.UsersWsResponse.parseFrom(bytes);
     assertThat(response.getUsersList()).extracting("login").containsExactly("login-1", "login-2", "login-3");
   }
 
   @Test
-  public void empty_result_when_no_user_on_template() throws IOException {
-    setSysAdminUser();
+  public void empty_result_when_no_user_on_template() throws Exception {
+    UserDto user = insertUser(newUserDto().setLogin("login-1").setName("name-1").setEmail("email-1"));
+    PermissionTemplateDto template = insertTemplate("template-uuid-1");
+    PermissionTemplateDto anotherTemplate = insertTemplate("template-uuid-2");
+    addUserToTemplate(newPermissionTemplateUser(USER, anotherTemplate, user));
 
-    UserDto user = insertUser(new UserDto().setLogin("login-1").setName("name-1").setEmail("email-1"));
-
-    PermissionTemplateDto template = dbClient.permissionTemplateDao().insert(dbSession, newPermissionTemplateDto().setUuid("template-uuid-1"));
-
-    PermissionTemplateDto anotherTemplate = dbClient.permissionTemplateDao().insert(dbSession, newPermissionTemplateDto().setUuid("template-uuid-2"));
-    addUserToTemplate(newPermissionTemplateUser(USER, anotherTemplate.getId(), user.getId()));
-    commit();
-
-    InputStream responseStream = newRequest(null, null)
+    loginAsAdmin();
+    byte[] bytes = newRequest(null, null)
       .setParam(PARAM_TEMPLATE_NAME, template.getName())
       .setMediaType(PROTOBUF)
-      .execute().getInputStream();
+      .execute()
+      .output();
 
-    WsPermissions.UsersWsResponse response = WsPermissions.UsersWsResponse.parseFrom(responseStream);
+    WsPermissions.UsersWsResponse response = WsPermissions.UsersWsResponse.parseFrom(bytes);
     assertThat(response.getUsersList()).isEmpty();
   }
 
   @Test
-  public void fail_if_not_a_project_permission() throws IOException {
-    setSysAdminUser();
+  public void fail_if_not_a_project_permission() throws Exception {
+    PermissionTemplateDto template = insertTemplate("template-uuid-1");
 
-    PermissionTemplateDto template = dbClient.permissionTemplateDao().insert(dbSession, newPermissionTemplateDto().setUuid("template-uuid-1"));
-    commit();
+    expectedException.expect(IllegalArgumentException.class);
 
-    expectedException.expect(BadRequestException.class);
+    loginAsAdmin();
     newRequest(GlobalPermissions.PROVISIONING, template.getUuid())
       .execute();
   }
 
   @Test
-  public void fail_if_no_template_param() {
-    setSysAdminUser();
-
+  public void fail_if_no_template_param() throws Exception {
     expectedException.expect(BadRequestException.class);
+
+    loginAsAdmin();
     newRequest(null, null)
       .execute();
   }
 
   @Test
-  public void fail_if_template_does_not_exist() {
-    setSysAdminUser();
-
+  public void fail_if_template_does_not_exist() throws Exception {
     expectedException.expect(NotFoundException.class);
+
+    loginAsAdmin();
     newRequest(null, "unknown-template-uuid")
       .execute();
   }
 
   @Test
-  public void fail_if_template_uuid_and_name_provided() {
-    setSysAdminUser();
-
-    PermissionTemplateDto template = dbClient.permissionTemplateDao().insert(dbSession, newPermissionTemplateDto().setUuid("template-uuid-1"));
-    commit();
+  public void fail_if_template_uuid_and_name_provided() throws Exception {
+    PermissionTemplateDto template = insertTemplate("template-uuid-1");
 
     expectedException.expect(BadRequestException.class);
+
+    loginAsAdmin();
     newRequest(null, template.getUuid())
       .setParam(PARAM_TEMPLATE_NAME, template.getName())
       .execute();
   }
 
   @Test
-  public void fail_if_not_logged_in() {
-    userSession.anonymous();
-
-    PermissionTemplateDto template = dbClient.permissionTemplateDao().insert(dbSession, newPermissionTemplateDto().setUuid("template-uuid-1"));
-    commit();
+  public void fail_if_not_logged_in() throws Exception {
+    PermissionTemplateDto template = insertTemplate("template-uuid-1");
 
     expectedException.expect(UnauthorizedException.class);
+
+    userSession.anonymous();
     newRequest(null, template.getUuid()).execute();
   }
 
   @Test
-  public void fail_if_insufficient_privileges() {
-    userSession.login("login");
-
-    PermissionTemplateDto template = dbClient.permissionTemplateDao().insert(dbSession, newPermissionTemplateDto().setUuid("template-uuid-1"));
-    commit();
+  public void fail_if_insufficient_privileges() throws Exception {
+    PermissionTemplateDto template = insertTemplate("template-uuid-1");
 
     expectedException.expect(ForbiddenException.class);
+
+    userSession.login("login");
     newRequest(null, template.getUuid()).execute();
   }
 
   private UserDto insertUser(UserDto userDto) {
-    return dbClient.userDao().insert(dbSession, userDto.setActive(true));
+    return userTester.insertUser(userDto);
+  }
+
+  private PermissionTemplateDto insertTemplate(String uuid) {
+    PermissionTemplateDto dto = db.getDbClient().permissionTemplateDao().insert(db.getSession(), newPermissionTemplateDto().setUuid(uuid));
+    db.commit();
+    return dto;
   }
 
   private void addUserToTemplate(PermissionTemplateUserDto dto) {
-    dbClient.permissionTemplateDao().insertUserPermission(dbSession, dto.getTemplateId(), dto.getUserId(), dto.getPermission());
+    db.getDbClient().permissionTemplateDao().insertUserPermission(db.getSession(), dto.getTemplateId(), dto.getUserId(), dto.getPermission());
+    db.commit();
   }
 
-  private void commit() {
-    dbSession.commit();
-  }
-
-  private static PermissionTemplateUserDto newPermissionTemplateUser(String permission, long permissionTemplateId, long userId) {
+  private static PermissionTemplateUserDto newPermissionTemplateUser(String permission, PermissionTemplateDto template, UserDto user) {
     return newPermissionTemplateUserDto()
       .setPermission(permission)
-      .setTemplateId(permissionTemplateId)
-      .setUserId(userId);
+      .setTemplateId(template.getId())
+      .setUserId(user.getId());
   }
 
-  private TestRequest newRequest(@Nullable String permission, @Nullable String templateUuid) {
-    TestRequest request = ws.newRequest();
+  private WsTester.TestRequest newRequest(@Nullable String permission, @Nullable String templateUuid) {
+    WsTester.TestRequest request = wsTester.newPostRequest(CONTROLLER, "template_users");
     if (permission != null) {
       request.setParam(PARAM_PERMISSION, permission);
     }
@@ -352,7 +313,7 @@ public class TemplateUsersActionTest {
     return request;
   }
 
-  private void setSysAdminUser() {
+  private void loginAsAdmin() {
     userSession.login("login").setGlobalPermissions(ADMIN);
   }
 }
