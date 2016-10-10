@@ -31,7 +31,6 @@ import org.sonar.api.utils.text.JsonWriter;
 import org.sonar.core.permission.GlobalPermissions;
 import org.sonar.db.DbClient;
 import org.sonar.db.DbSession;
-import org.sonar.db.MyBatis;
 import org.sonar.db.user.GroupMembershipQuery;
 import org.sonar.db.user.UserMembershipDto;
 import org.sonar.db.user.UserMembershipQuery;
@@ -79,8 +78,7 @@ public class UsersAction implements UserGroupsWsAction {
     String queryString = request.param(Param.TEXT_QUERY);
     String selected = request.mandatoryParam(Param.SELECTED);
 
-    DbSession dbSession = dbClient.openSession(false);
-    try {
+    try (DbSession dbSession = dbClient.openSession(false)) {
       GroupId group = support.findGroup(dbSession, request);
 
       UserMembershipQuery query = UserMembershipQuery.builder()
@@ -98,8 +96,6 @@ public class UsersAction implements UserGroupsWsAction {
       writeMembers(json, users);
       writePaging(json, paging);
       json.endObject().close();
-    } finally {
-      MyBatis.closeQuietly(dbSession);
     }
   }
 

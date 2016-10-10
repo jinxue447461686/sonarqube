@@ -32,7 +32,6 @@ import org.sonar.server.exceptions.NotFoundException;
 import org.sonar.server.user.UserSession;
 
 import static java.lang.String.format;
-import static org.sonar.db.MyBatis.closeQuietly;
 import static org.sonar.server.usergroups.ws.GroupWsSupport.PARAM_GROUP_ID;
 import static org.sonar.server.usergroups.ws.GroupWsSupport.PARAM_GROUP_NAME;
 import static org.sonar.server.usergroups.ws.GroupWsSupport.PARAM_LOGIN;
@@ -68,8 +67,7 @@ public class AddUserAction implements UserGroupsWsAction {
   public void handle(Request request, Response response) throws Exception {
     userSession.checkLoggedIn().checkPermission(GlobalPermissions.SYSTEM_ADMIN);
 
-    DbSession dbSession = dbClient.openSession(false);
-    try {
+    try (DbSession dbSession = dbClient.openSession(false)) {
       GroupId groupId = support.findGroup(dbSession, request);
 
       String login = request.mandatoryParam(PARAM_LOGIN);
@@ -85,8 +83,6 @@ public class AddUserAction implements UserGroupsWsAction {
       }
 
       response.noContent();
-    } finally {
-      closeQuietly(dbSession);
     }
   }
 

@@ -38,7 +38,7 @@ import static org.sonar.db.DatabaseUtils.executeLargeInputs;
 
 public class GroupDao implements Dao {
 
-  private System2 system;
+  private final System2 system;
 
   public GroupDao(System2 system) {
     this.system = system;

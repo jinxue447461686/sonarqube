@@ -75,8 +75,7 @@ public class DeleteAction implements UserGroupsWsAction {
   public void handle(Request request, Response response) throws Exception {
     userSession.checkLoggedIn().checkPermission(GlobalPermissions.SYSTEM_ADMIN);
 
-    DbSession dbSession = dbClient.openSession(false);
-    try {
+    try (DbSession dbSession = dbClient.openSession(false)) {
       GroupId groupId = support.findGroup(dbSession, request);
 
       checkNotTryingToDeleteDefaultGroup(dbSession, groupId);
@@ -88,8 +87,6 @@ public class DeleteAction implements UserGroupsWsAction {
 
       dbSession.commit();
       response.noContent();
-    } finally {
-      dbClient.closeSession(dbSession);
     }
   }
 

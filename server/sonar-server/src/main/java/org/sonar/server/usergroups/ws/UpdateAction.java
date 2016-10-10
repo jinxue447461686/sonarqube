@@ -40,7 +40,6 @@ import org.sonarqube.ws.WsUserGroups;
 
 import static org.sonar.api.CoreProperties.CORE_DEFAULT_GROUP;
 import static org.sonar.api.user.UserGroupValidation.GROUP_NAME_MAX_LENGTH;
-import static org.sonar.db.MyBatis.closeQuietly;
 import static org.sonar.server.usergroups.ws.GroupWsSupport.DESCRIPTION_MAX_LENGTH;
 import static org.sonar.server.usergroups.ws.GroupWsSupport.PARAM_GROUP_DESCRIPTION;
 import static org.sonar.server.usergroups.ws.GroupWsSupport.PARAM_GROUP_ID;
@@ -95,8 +94,7 @@ public class UpdateAction implements UserGroupsWsAction {
   public void handle(Request request, Response response) throws Exception {
     userSession.checkLoggedIn().checkPermission(GlobalPermissions.SYSTEM_ADMIN);
 
-    DbSession dbSession = dbClient.openSession(false);
-    try {
+    try (DbSession dbSession = dbClient.openSession(false)) {
       long groupId = request.mandatoryParamAsLong(PARAM_GROUP_ID);
       GroupDto group = dbClient.groupDao().selectById(dbSession, groupId);
       checkFound(group, "Could not find a user group with id '%s'.", groupId);
@@ -127,8 +125,6 @@ public class UpdateAction implements UserGroupsWsAction {
       }
 
       writeResponse(dbSession, request, response, org.get(), group);
-    } finally {
-      closeQuietly(dbSession);
     }
   }
 

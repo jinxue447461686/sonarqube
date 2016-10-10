@@ -90,8 +90,7 @@ public class SearchAction implements UserGroupsWsAction {
     String query = defaultIfBlank(request.param(Param.TEXT_QUERY), "");
     Set<String> fields = neededFields(request);
 
-    DbSession dbSession = dbClient.openSession(false);
-    try {
+    try (DbSession dbSession = dbClient.openSession(false)) {
       OrganizationDto organization = groupWsSupport.findOrganizationByKey(dbSession, request.param(PARAM_ORGANIZATION_KEY));
 
       int limit = dbClient.groupDao().countByQuery(dbSession, organization.getUuid(), query);
@@ -103,8 +102,6 @@ public class SearchAction implements UserGroupsWsAction {
       options.writeJson(json, limit);
       writeGroups(json, groups, userCountByGroup, fields);
       json.endObject().close();
-    } finally {
-      dbClient.closeSession(dbSession);
     }
   }
 
