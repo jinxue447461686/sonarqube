@@ -32,7 +32,6 @@ import org.sonar.api.utils.System2;
 import org.sonar.db.Dao;
 import org.sonar.db.DatabaseUtils;
 import org.sonar.db.DbSession;
-import org.sonar.db.RowNotFoundException;
 import org.sonar.db.WildcardPosition;
 
 import static org.sonar.db.DatabaseUtils.executeLargeInputs;
@@ -43,18 +42,6 @@ public class GroupDao implements Dao {
 
   public GroupDao(System2 system) {
     this.system = system;
-  }
-
-  /**
-   * @deprecated replaced by {@link #selectByName(DbSession, String, String)}
-   */
-  @Deprecated
-  public GroupDto selectOrFailByName(DbSession session, String name) {
-    GroupDto group = selectByName(session, name);
-    if (group == null) {
-      throw new RowNotFoundException(String.format("Could not find a group with name '%s'", name));
-    }
-    return group;
   }
 
   /**
@@ -84,14 +71,6 @@ public class GroupDao implements Dao {
     return executeLargeInputs(names, mapper(session)::selectByNames);
   }
 
-  public GroupDto selectOrFailById(DbSession dbSession, long groupId) {
-    GroupDto group = selectById(dbSession, groupId);
-    if (group == null) {
-      throw new RowNotFoundException(String.format("Could not find a group with id '%d'", groupId));
-    }
-    return group;
-  }
-
   @CheckForNull
   public GroupDto selectById(DbSession dbSession, long groupId) {
     return mapper(dbSession).selectById(groupId);
@@ -101,6 +80,10 @@ public class GroupDao implements Dao {
     mapper(dbSession).deleteById(groupId);
   }
 
+  /**
+   * @deprecated does not support organizations
+   */
+  @Deprecated
   public int countByQuery(DbSession session, @Nullable String query) {
     return mapper(session).countByQuery(groupSearchToSql(query));
   }

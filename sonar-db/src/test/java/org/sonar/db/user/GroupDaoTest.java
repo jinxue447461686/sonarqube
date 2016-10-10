@@ -29,7 +29,6 @@ import org.junit.Test;
 import org.sonar.api.utils.System2;
 import org.sonar.db.DbSession;
 import org.sonar.db.DbTester;
-import org.sonar.db.RowNotFoundException;
 import org.sonar.db.organization.OrganizationDto;
 
 import static java.util.Arrays.asList;
@@ -85,34 +84,6 @@ public class GroupDaoTest {
     Optional<GroupDto> group = underTest.selectByName(dbSession, AN_ORGANIZATION.getUuid(), "missing");
 
     assertThat(group).isNotPresent();
-  }
-
-  @Test
-  public void test_insert_and_selectOrFailByName() {
-    db.getDbClient().groupDao().insert(dbSession, aGroup);
-
-    GroupDto group = underTest.selectOrFailByName(dbSession, aGroup.getName());
-
-    assertThat(group.getId()).isNotNull();
-    assertThat(group.getOrganizationUuid()).isEqualTo(aGroup.getOrganizationUuid());
-    assertThat(group.getName()).isEqualTo(aGroup.getName());
-    assertThat(group.getDescription()).isEqualTo(aGroup.getDescription());
-    assertThat(group.getCreatedAt()).isEqualTo(new Date(NOW));
-    assertThat(group.getUpdatedAt()).isEqualTo(new Date(NOW));
-  }
-
-  @Test(expected = RowNotFoundException.class)
-  public void selectOrFailByName_throws_NFE_if_not_found() {
-    underTest.selectOrFailByName(dbSession, "missing");
-  }
-
-  @Test
-  public void selectOrFailById() {
-    db.getDbClient().groupDao().insert(dbSession, aGroup);
-
-    GroupDto group = underTest.selectOrFailById(dbSession, aGroup.getId());
-
-    assertThat(group.getName()).isEqualTo(aGroup.getName());
   }
 
   @Test
